@@ -65,6 +65,11 @@ describe("state persistence manager", () => {
     expect(next).toBe("discovered");
   });
 
+  test("transition allows reset to idle from any state and reviewed to fixed", () => {
+    expect(transition("submitted", "idle")).toBe("idle");
+    expect(transition("reviewed", "fixed")).toBe("fixed");
+  });
+
   test("transition throws InvalidTransitionError for invalid move", () => {
     expect(() => transition("idle", "fixed")).toThrow(InvalidTransitionError);
   });
@@ -100,5 +105,53 @@ describe("state persistence manager", () => {
     expect((loaded as unknown as { data?: Record<string, unknown> }).data).toEqual({
       analysisSummary: { ready: true, count: 3 },
     });
+  });
+
+  test("getStateData returns null in a fresh workspace without leaking cached data", async () => {
+    await loadState();
+    await setStateData("analysisSummary", { ready: true });
+
+    const isolatedDir = await mkdtemp(join(tmpdir(), "gittributor-state-isolated-"));
+
+    try {
+      process.chdir(isolatedDir);
+      expect(getStateData("analysisSummary")).toBeNull();
+    } finally {
+      process.chdir(tempDir);
+      await rm(isolatedDir, { recursive: true, force: true });
+    }
+  });
+
+  test("saveState does not persist cached data into a separate fresh workspace", async () => {
+    await loadState();
+    await setStateData("analysisSummary", { ready: true });
+
+    const isolatedDir = await mkdtemp(join(tmpdir(), "gittributor-state-isolated-"));
+
+    try {
+      process.chdir(isolatedDir);
+
+      const separateState: PipelineState = {
+        version: "1.0.0",
+        status: "fixed",
+        repositories: [],
+        issues: [],
+        analyses: {},
+        fixes: {},
+        submissions: [],
+        lastUpdated: "2020-01-01T00:00:00.000Z",
+      };
+
+      await saveState(separateState);
+
+      const persisted = (await Bun.file(join(isolatedDir, ".gittributor", "state.json")).json()) as {
+        data?: Record<string, unknown>;
+      };
+
+      expect(persisted.data).toEqual({});
+    } finally {
+      process.chdir(tempDir);
+      await rm(isolatedDir, { recursive: true, force: true });
+    }
   });
 });

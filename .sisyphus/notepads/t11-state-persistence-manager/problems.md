@@ -1,0 +1,1 @@
+- 2026-04-01: Oracle review found an existing branch-level mismatch outside Task 11 scope: `src/commands/submit.ts` and `tests/submit.test.ts` use a persisted `submit_failed` status, but `PipelineStatus` and `src/lib/state.ts` do not model it. This task intentionally left that inconsistency untouched because the request forbade modifying additional existing source files.

@@ -1,0 +1,2 @@
+- 2026-04-01: `src/lib/state.ts` keeps process-local cache, so tests must cover workspace changes via `process.chdir()` to prevent data leakage between temp repos.
+- 2026-04-01: In this repo, Bun handles JSON persistence with `Bun.file(...).json()` and `Bun.write(...)`, while directory creation still uses `mkdir(..., { recursive: true })`.

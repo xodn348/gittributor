@@ -21,6 +21,7 @@ interface PersistedPipelineState extends PipelineState {
 }
 
 let stateCache: PersistedPipelineState | null = null;
+let cachedWorkspacePath: string | null = null;
 
 export class InvalidTransitionError extends GittributorError {
   constructor(from: PipelineStatus, to: PipelineStatus) {
@@ -28,6 +29,28 @@ export class InvalidTransitionError extends GittributorError {
     this.name = "InvalidTransitionError";
   }
 }
+
+const getWorkspacePath = (): string => {
+  return process.cwd();
+};
+
+const isCacheForCurrentWorkspace = (): boolean => {
+  return cachedWorkspacePath === getWorkspacePath();
+};
+
+const getCachedState = (): PersistedPipelineState | null => {
+  if (!isCacheForCurrentWorkspace()) {
+    return null;
+  }
+
+  return stateCache;
+};
+
+const updateCachedState = (state: PersistedPipelineState): PersistedPipelineState => {
+  cachedWorkspacePath = getWorkspacePath();
+  stateCache = state;
+  return state;
+};
 
 const getStateDirectoryPath = (): string => {
   return join(process.cwd(), STATE_DIRECTORY);
@@ -68,8 +91,9 @@ const extractData = (state: PipelineState | PersistedPipelineState): Record<stri
     return candidate.data;
   }
 
-  if (stateCache?.data && typeof stateCache.data === "object") {
-    return stateCache.data;
+  const cachedState = getCachedState();
+  if (cachedState?.data && typeof cachedState.data === "object") {
+    return cachedState.data;
   }
 
   return {};
@@ -98,13 +122,13 @@ export const loadState = async (): Promise<PersistedPipelineState> => {
   const stateFile = Bun.file(getStateFilePath());
   if (!(await stateFile.exists())) {
     const initialState = createDefaultState();
-    stateCache = initialState;
+    updateCachedState(initialState);
     debug("State file not found; returning default idle state.");
     return initialState;
   }
 
   const loaded = parseState(await stateFile.json());
-  stateCache = loaded;
+  updateCachedState(loaded);
   debug(`State loaded from disk with status '${loaded.status}'.`);
   return loaded;
 };
@@ -118,7 +142,7 @@ export const saveState = async (state: PipelineState): Promise<void> => {
   });
 
   await Bun.write(getStateFilePath(), JSON.stringify(nextState, null, 2));
-  stateCache = nextState;
+  updateCachedState(nextState);
   info(`Pipeline state saved (${nextState.status}).`);
 };
 
@@ -135,19 +159,21 @@ export const transition = (from: PipelineStatus, to: PipelineStatus): PipelineSt
 };
 
 export const getStateData = <T>(key: string): T | null => {
-  if (!stateCache) {
+  const cachedState = getCachedState();
+
+  if (!cachedState) {
     return null;
   }
 
-  if (!(key in stateCache.data)) {
+  if (!(key in cachedState.data)) {
     return null;
   }
 
-  return stateCache.data[key] as T;
+  return cachedState.data[key] as T;
 };
 
 export const setStateData = async (key: string, data: unknown): Promise<void> => {
-  const currentState = stateCache ?? (await loadState());
+  const currentState = getCachedState() ?? (await loadState());
 
   const nextState: PersistedPipelineState = {
     ...currentState,

@@ -1,0 +1,2 @@
+- 2026-04-01: Scoped the in-memory state cache to the active `process.cwd()` so `.gittributor/state.json` remains the source of truth per workspace instead of leaking data across repositories.
+- 2026-04-01: Kept the persisted state shape aligned with the existing `PipelineState` contract in `src/types/index.ts` (`status` field) rather than introducing a separate `current` field.
