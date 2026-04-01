@@ -46,17 +46,24 @@ describe("utils", () => {
   it("retry throws after all attempts are exhausted", async () => {
     let callCount = 0;
 
-    const retryPromise = retry(
-      async () => {
-        callCount += 1;
-        throw new Error(`failure ${callCount}`);
-      },
-      3,
-      1,
-    );
+    let thrownError: unknown;
+    try {
+      await retry(
+        async () => {
+          callCount += 1;
+          throw new Error(`failure ${callCount}`);
+        },
+        3,
+        1,
+      );
+    } catch (error) {
+      thrownError = error;
+    }
 
-    await expect(retryPromise).rejects.toThrow("failure 3");
-
+    expect(thrownError).toBeInstanceOf(Error);
+    if (thrownError instanceof Error) {
+      expect(thrownError.message).toBe("failure 3");
+    }
     expect(callCount).toBe(3);
   });
 
