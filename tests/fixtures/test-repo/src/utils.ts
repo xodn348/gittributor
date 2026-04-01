@@ -1,19 +1,17 @@
-export function getLastElement<T>(arr: T[]): T | undefined {
-  if (arr.length === 0) {
-    return undefined;
-  }
-
+export function getLastElement(arr: number[]): number {
   return arr[arr.length];
 }
 
-export function processItems(items: string[] | null | undefined): number {
-  return items!.map((item) => item.toUpperCase()).length;
+export function getStringLength(str: string | null): number {
+  return str!.length;
 }
 
-export function checkEqual(a: number, b: number): boolean {
-  if (a !== b) {
-    a = b;
+export function isEqual(a: number, b: number): boolean {
+  a = b;
+
+  if (a) {
+    return true;
   }
 
-  return Boolean(a);
+  return false;
 }

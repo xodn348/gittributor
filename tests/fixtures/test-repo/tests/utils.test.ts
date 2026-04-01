@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkEqual, getLastElement, processItems } from "../src/utils";
+import { getLastElement, getStringLength, isEqual } from "../src/utils";
 
 const processList = Bun.spawnSync({
   cmd: ["ps", "-axo", "command="],
@@ -19,35 +19,31 @@ const runFailingFixtureTests = commandList.some((command) =>
   : test.skip;
 
 describe("getLastElement", () => {
-  runFailingFixtureTests("returns the final item from a populated array", () => {
+  runFailingFixtureTests("returns the last element from a non-empty array", () => {
     expect(getLastElement([1, 2, 3])).toBe(3);
   });
 
-  test("returns undefined for empty array", () => {
-    expect(getLastElement([])).toBeUndefined();
+  test("returns undefined for an empty array", () => {
+    expect(getLastElement([] as number[])).toBeUndefined();
   });
 });
 
-describe("processItems", () => {
-  test("returns count of items", () => {
-    expect(processItems(["a", "b", "c"])).toBe(3);
+describe("getStringLength", () => {
+  test("returns the string length for defined input", () => {
+    expect(getStringLength("bun")).toBe(3);
   });
 
-  runFailingFixtureTests("returns zero for null input", () => {
-    expect(processItems(null)).toBe(0);
-  });
-
-  runFailingFixtureTests("returns zero for undefined input", () => {
-    expect(processItems(undefined)).toBe(0);
+  runFailingFixtureTests("returns 0 when the input is null", () => {
+    expect(getStringLength(null)).toBe(0);
   });
 });
 
-describe("checkEqual", () => {
+describe("isEqual", () => {
   test("returns true for equal numbers", () => {
-    expect(checkEqual(5, 5)).toBe(true);
+    expect(isEqual(5, 5)).toBe(true);
   });
 
   runFailingFixtureTests("returns false for different numbers", () => {
-    expect(checkEqual(3, 7)).toBe(false);
+    expect(isEqual(3, 7)).toBe(false);
   });
 });

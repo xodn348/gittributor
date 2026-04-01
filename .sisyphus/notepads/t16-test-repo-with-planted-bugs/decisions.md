@@ -3,3 +3,5 @@
 - Final fixture gating uses process-table inspection inside tests/fixtures/test-repo/tests/utils.test.ts and removes the preload experiment.
 - Fixed unrelated suite regressions in state, submit, and rate-limiter modules so the required main-suite verification could complete cleanly.
 - Matched `tests/fixtures/mock-issues.json` to the actual `Issue` contract in `src/types/index.ts` (`createdAt` present, `state`/`updatedAt`/`approachabilityScore` absent) because the task text's embedded type shape was stale relative to the checked-in code.
+- Kept `tests/fixtures/test-repo/src/index.ts` as a simple clean export and moved all intentional breakage into `src/utils.ts` so the fixture repo has one obviously healthy entry point.
+- Used a diagnostics-clean runtime bug for `isEqual` (`a = b; if (a)`) because the literal `if (a = b)` form triggers a TypeScript diagnostic in this workspace and would violate the zero-diagnostics verification gate.

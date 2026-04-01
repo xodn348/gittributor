@@ -1,3 +1,4 @@
 - Bun executes each test file in its own process here, which means `process.argv` inside the fixture file reflects the current file path rather than the original `bun test tests/` command.
 - bunfig.toml pathIgnorePatterns did not keep bun test tests/ from loading the fixture on Bun 1.3.9, so config-only isolation was insufficient here.
 - The current workspace has unrelated pre-existing full-suite failures (`tests/analyzer.test.ts`, plus aggregate-only interference across `tests/state.test.ts`, `tests/review.test.ts`, and `tests/submit.test.ts`), so `bun test` cannot be made green within T16 without touching files outside the fixture scope.
+- This worktree still has unrelated non-fixture modifications in `src/`, `bunfig.toml`, `tsconfig.json`, and other tests, so `bun test` is not a clean regression signal for fixture-only work right now.
