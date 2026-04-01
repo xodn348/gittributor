@@ -42,12 +42,25 @@ const SINGLE_FILE_FIX_PATTERNS = [
   /just\s+[\w./-]+\.(ts|tsx|js|jsx|py|go|java|rb|rs|c|cpp|cs)/i,
 ];
 
+const IMPACT_PATTERNS = [
+  /\bcrash(es|ed|ing)?\b/i,
+  /\bdata[\s-]loss\b/i,
+  /\bsecurity\b/i,
+  /\bvulnerabilit(y|ies)\b/i,
+  /\bregression\b/i,
+  /\bmemory[\s-]leak\b/i,
+  /\bcorrupt(s|ed|ion)?\b/i,
+  /\bbroken\b/i,
+];
+
 type IssueWithOptionalUpdatedAt = Issue & {
   updatedAt?: string;
 };
 
 export type ScoredIssue = Issue & {
   approachabilityScore: number;
+  impactScore: number;
+  totalScore: number;
 };
 
 const hasPatternMatch = (source: string, patterns: RegExp[]): boolean => {
@@ -104,6 +117,29 @@ const scoreApproachability = (issue: Issue): number => {
   return score;
 };
 
+/**
+ * Scores issue impact using deterministic keyword rules (no AI tokens):
+ * - crash/data-loss/security/vulnerability (+3 each)
+ * - regression/memory-leak/corrupt/broken (+2 each)
+ * Checks both title and body.
+ */
+const scoreImpact = (issue: Issue): number => {
+  const source = `${issue.title} ${issue.body ?? ""}`;
+  let score = 0;
+
+  for (const pattern of IMPACT_PATTERNS) {
+    if (pattern.test(source)) {
+      if (/crash|data[\s-]loss|security|vulnerabilit/.test(pattern.source)) {
+        score += 3;
+      } else {
+        score += 2;
+      }
+    }
+  }
+
+  return score;
+};
+
 const persistIssues = async (issues: ScoredIssue[]): Promise<void> => {
   const outputDirectory = join(process.cwd(), ".gittributor");
   const outputPath = join(outputDirectory, "issues.json");
@@ -128,18 +164,23 @@ export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
 
   const scored = filtered
     .map((issue) => {
+      const approachabilityScore = scoreApproachability(issue);
+      const impactScore = scoreImpact(issue);
       return {
         ...issue,
-        approachabilityScore: scoreApproachability(issue),
+        approachabilityScore,
+        impactScore,
+        totalScore: approachabilityScore + impactScore,
       };
     })
     .sort((left, right) => {
-      if (right.approachabilityScore !== left.approachabilityScore) {
-        return right.approachabilityScore - left.approachabilityScore;
+      if (right.totalScore !== left.totalScore) {
+        return right.totalScore - left.totalScore;
       }
 
       return left.number - right.number;
     });
+
 
   await persistIssues(scored);
   debug(`Discovered ${scored.length} actionable issue(s) for ${repo.fullName}.`);

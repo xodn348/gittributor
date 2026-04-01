@@ -123,8 +123,20 @@ function buildSystemPrompt(): string {
   ].join(" ");
 }
 
+function buildFileContentsSection(fileContents: Record<string, string> | undefined): string {
+  if (!fileContents || Object.keys(fileContents).length === 0) {
+    return "";
+  }
+
+  const blocks = Object.entries(fileContents)
+    .map(([filePath, content]) => `<file path="${filePath}">\n${content}\n</file>`)
+    .join("\n\n");
+
+  return `\n\n<relevant-file-contents>\n${blocks}\n</relevant-file-contents>`;
+}
+
 function buildPrompt(analysis: AnalysisResult, issue: Issue, repo: Repository): string {
-  return [
+  const base = [
     "Generate a fix proposal for this GitHub issue.",
     `<repository>${repo.fullName}</repository>`,
     `<repository-description>${repo.description ?? "(no description)"}</repository-description>`,
@@ -135,6 +147,8 @@ function buildPrompt(analysis: AnalysisResult, issue: Issue, repo: Repository): 
     `<analyzer-suggested-approach>${analysis.suggestedApproach}</analyzer-suggested-approach>`,
     `<analyzer-confidence>${analysis.confidence}</analyzer-confidence>`,
   ].join("\n\n");
+
+  return base + buildFileContentsSection(analysis.fileContents);
 }
 
 async function persistFixResult(issue: Issue, result: FixResult): Promise<void> {

@@ -279,6 +279,9 @@ async function requestAnalysis(
     rootCause: parsedAnalysis.rootCause,
     affectedFiles: normalizedRelevantFiles,
     complexity: parsedAnalysis.complexity,
+    fileContents: Object.fromEntries(
+      normalizedRelevantFiles.map((f) => [f, truncateFileByLines(path.join(repoPath, f))])
+    ),
   };
 }
 

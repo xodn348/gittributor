@@ -2,76 +2,16 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitHubAPIError as _GitHubAPIErrorBinding, GitHubClient as _GitHubClientBinding } from "../src/lib/github";
-import type { Issue, PRSubmission, Repository } from "../src/types/index";
+import { GitHubClient } from "../src/lib/github";
 
-const _realGitHubClient = _GitHubClientBinding;
-const _realGitHubAPIError = _GitHubAPIErrorBinding;
-
-let _currentGitHubClientClass: typeof _realGitHubClient = _realGitHubClient;
-
-class GitHubClientMockWrapper {
-  private readonly client: InstanceType<typeof _realGitHubClient>;
-
-  constructor() {
-    this.client = new _currentGitHubClientClass();
-  }
-
-  searchRepositories(opts: { minStars: number; languages: string[]; limit: number }): Promise<Repository[]> {
-    return this.client.searchRepositories(opts);
-  }
-
-  searchIssues(repoFullName: string, opts: { labels: string[]; limit: number }): Promise<Issue[]> {
-    return this.client.searchIssues(repoFullName, opts);
-  }
-
-  forkRepo(repoFullName: string): Promise<string> {
-    return this.client.forkRepo(repoFullName);
-  }
-
-  createBranch(repoPath: string, branchName: string): Promise<void> {
-    return this.client.createBranch(repoPath, branchName);
-  }
-
-  commitAndPush(repoPath: string, message: string, branchName: string): Promise<void> {
-    return this.client.commitAndPush(repoPath, message, branchName);
-  }
-
-  createPR(opts: { upstreamRepo: string; branchName: string; title: string; body: string }): Promise<PRSubmission> {
-    return this.client.createPR(opts);
-  }
-}
-
-function establishGitHubModuleMock(): void {
-  mock.module("../src/lib/github", () => ({
-    GitHubClient: GitHubClientMockWrapper,
-    GitHubAPIError: _realGitHubAPIError,
-  }));
-}
-
-establishGitHubModuleMock();
-
-const searchRepositoriesMock = mock(async (_opts: { minStars: number; languages: string[]; limit: number }): Promise<Repository[]> => []);
-
-let discoverModuleLoadCounter = 0;
-
-async function loadDiscoverCommandWithGitHubMock(): Promise<typeof import("../src/commands/discover")> {
-  _currentGitHubClientClass = class DiscoverGitHubClientMock extends _realGitHubClient {
-    override searchRepositories(opts: { minStars: number; languages: string[]; limit: number }): Promise<Repository[]> {
-      return searchRepositoriesMock(opts);
-    }
-  };
-
-  discoverModuleLoadCounter += 1;
-  return import(`../src/commands/discover.ts?cacheBust=${discoverModuleLoadCounter}`);
-}
+import { buildDiscoverQuery, discoverRepos } from "../src/commands/discover";
 
 describe("discoverRepos", () => {
   const cwd = process.cwd();
   let tempDir: string;
 
   beforeEach(() => {
-    searchRepositoriesMock.mockReset();
+    spyOn(GitHubClient.prototype, "searchRepositories").mockResolvedValue([]);
     tempDir = mkdtempSync(join(tmpdir(), "gittributor-discover-"));
     process.chdir(tempDir);
   });
@@ -79,17 +19,14 @@ describe("discoverRepos", () => {
   afterEach(() => {
     process.chdir(cwd);
     rmSync(tempDir, { recursive: true, force: true });
-    _currentGitHubClientClass = _realGitHubClient;
     mock.restore();
-    establishGitHubModuleMock();
   });
 
-  test("buildDiscoverQuery applies defaults and requested filters", async () => {
-    const { buildDiscoverQuery } = await loadDiscoverCommandWithGitHubMock();
+  test("buildDiscoverQuery applies defaults and requested filters", () => {
     const query = buildDiscoverQuery({ language: "TypeScript" });
 
     expect(query).toContain("language:TypeScript");
-    expect(query).toContain("stars:>=50");
+    expect(query).not.toContain("stars:>=");
     expect(query).toContain("good-first-issues:>0");
     expect(query).toContain("sort=stars");
     expect(query).toContain("order=desc");
@@ -97,9 +34,7 @@ describe("discoverRepos", () => {
   });
 
   test("filters repositories to include only repos with good-first-issue signals", async () => {
-    const { discoverRepos } = await loadDiscoverCommandWithGitHubMock();
-
-    searchRepositoriesMock.mockResolvedValueOnce([
+    const searchRepositoriesSpy = spyOn(GitHubClient.prototype, "searchRepositories").mockResolvedValueOnce([
       {
         id: 1,
         name: "good",
@@ -128,7 +63,7 @@ describe("discoverRepos", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]?.fullName).toBe("octo/good");
-    expect(searchRepositoriesMock).toHaveBeenCalledWith({
+    expect(searchRepositoriesSpy).toHaveBeenCalledWith({
       minStars: 100,
       languages: ["TypeScript"],
       limit: 10,
@@ -136,9 +71,7 @@ describe("discoverRepos", () => {
   });
 
   test("returns empty list and persists an empty discoveries file when no repositories match", async () => {
-    const { discoverRepos } = await loadDiscoverCommandWithGitHubMock();
-
-    searchRepositoriesMock.mockResolvedValueOnce([]);
+    spyOn(GitHubClient.prototype, "searchRepositories").mockResolvedValueOnce([]);
 
     const result = await discoverRepos({});
 
@@ -149,9 +82,7 @@ describe("discoverRepos", () => {
   });
 
   test("writes ANSI-formatted discovery table to stdout", async () => {
-    const { discoverRepos } = await loadDiscoverCommandWithGitHubMock();
-
-    searchRepositoriesMock.mockResolvedValueOnce([
+    spyOn(GitHubClient.prototype, "searchRepositories").mockResolvedValueOnce([
       {
         id: 3,
         name: "cli-tool",

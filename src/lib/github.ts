@@ -150,6 +150,14 @@ export class GitHubClient {
     };
   }
 
+  async getFileTree(repoFullName: string): Promise<string[]> {
+    const payload = await this.runCommand([
+      "gh", "api", `repos/${repoFullName}/git/trees/HEAD?recursive=1`,
+    ]);
+    const data = this.parseJSON<{ tree: { path: string; type: string }[] }>(payload, "getFileTree");
+    return data.tree.filter((item) => item.type === "blob").map((item) => item.path);
+  }
+
   private async runCommand(cmd: string[]): Promise<string> {
     const proc = Bun.spawn({ cmd, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, exitCode] = await Promise.all([

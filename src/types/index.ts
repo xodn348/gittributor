@@ -32,6 +32,7 @@ export interface AnalysisResult {
   suggestedApproach: string;
   confidence: number;
   analyzedAt: string;
+  fileContents?: Record<string, string>;
 }
 
 export interface FixResult {
