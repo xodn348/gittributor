@@ -1,0 +1,20 @@
+{
+  "name": "gittributor",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "gittributor": "./bin/gittributor.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build": "bun build ./bin/gittributor.ts --outdir=./dist --target=bun"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
