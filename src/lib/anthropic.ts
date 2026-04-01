@@ -99,7 +99,7 @@ async function parseErrorMessage(response: Response): Promise<string> {
   }
 }
 
-async function callAnthropic(options: {
+export async function callAnthropic(options: {
   apiKey: string;
   system: string;
   prompt: string;

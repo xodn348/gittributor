@@ -1,0 +1,2 @@
+- 2026-04-01: The analyzer can extend the shared `AnalysisResult` contract locally with TypeScript module augmentation when a task needs richer metadata but the core type file is intentionally off-limits.
+- 2026-04-01: For repo snapshots, the safest cleanup pattern in this codebase is `try/finally` around the shallow clone plus `rmSync(tempDir, { recursive: true, force: true })`, even when Anthropic parsing fails.

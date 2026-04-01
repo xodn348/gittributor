@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1001,
+    "number": 101,
+    "title": "getLastElement returns undefined for non-empty arrays",
+    "body": "## Summary\n`getLastElement` returns `undefined` for populated arrays instead of the final item.\n\n## Reproduction\n1. Open `src/utils.ts`.\n2. Call `getLastElement([1, 2, 3])`.\n3. Observe that the return value is `undefined` instead of `3`.\n\n## Expected\nReturn the last array element rather than reading past the end of the array.",
+    "url": "https://github.com/test-org/sample-project/issues/101",
+    "repoFullName": "test-org/sample-project",
+    "labels": ["good first issue"],
+    "createdAt": "2026-03-20T10:00:00.000Z",
+    "assignees": []
+  },
+  {
+    "id": 1002,
+    "number": 102,
+    "title": "processItems crashes when items is null",
+    "body": "## Summary\n`processItems` throws when the input is `null` or `undefined` instead of safely returning `0`.\n\n## Reproduction\n1. Open `src/utils.ts`.\n2. Call `processItems(null)` or `processItems(undefined)`.\n3. Observe that the function throws before returning a count.\n\n## Expected\nHandle missing input before reading `.length`.",
+    "url": "https://github.com/test-org/sample-project/issues/102",
+    "repoFullName": "test-org/sample-project",
+    "labels": ["good first issue"],
+    "createdAt": "2026-03-22T14:30:00.000Z",
+    "assignees": []
+  },
+  {
+    "id": 1003,
+    "number": 103,
+    "title": "checkEqual reports different numbers as equal",
+    "body": "## Summary\n`checkEqual` treats different numbers as equal because it assigns inside the condition instead of comparing values.\n\n## Reproduction\n1. Open `src/utils.ts`.\n2. Call `checkEqual(3, 7)`.\n3. Observe that the function returns `true` instead of `false`.\n\n## Expected\nUse a comparison operator so unequal inputs return `false`.",
+    "url": "https://github.com/test-org/sample-project/issues/103",
+    "repoFullName": "test-org/sample-project",
+    "labels": ["good first issue"],
+    "createdAt": "2026-03-24T09:15:00.000Z",
+    "assignees": []
+  }
+]

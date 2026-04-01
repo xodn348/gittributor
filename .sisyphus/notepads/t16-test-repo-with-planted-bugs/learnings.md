@@ -1,0 +1,4 @@
+- Bun's `pathIgnorePatterns` setting did not keep `bun test tests/` from executing the fixture file in this repo, so the stable fallback was to detect broad-suite participation via a shared preload log.
+- The real `Issue` type in `src/types/index.ts` uses `repoFullName`, `labels: string[]`, and `assignees: string[]`, so fixture issue mocks must follow that contract instead of GitHub's raw REST shape.
+- In this Bun 1.3.9 setup, the reliable direct-run signal was the process table entry for the exact command string instead of in-process argv or bunfig ignore patterns alone.
+- Keeping the planted bugs diagnostics-clean required using a non-null assertion for the missing-null-check case and a standalone assignment statement for the wrong-operator bug instead of `@ts-ignore` or an assignment-in-condition expression.

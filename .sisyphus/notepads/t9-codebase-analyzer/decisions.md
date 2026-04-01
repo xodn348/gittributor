@@ -1,0 +1,2 @@
+- 2026-04-01: Switched the analyzer from the older `analyzeCodeForIssue` helper to a direct `callAnthropic` flow so the module can enforce the task-specific system prompt and structured JSON fields (`rootCause`, `affectedFiles`, `complexity`).
+- 2026-04-01: Persist large-repo skip results to `.gittributor/analysis.json` too, so every analyzer run leaves a machine-readable outcome instead of silently returning early.

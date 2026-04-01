@@ -1,8 +1,49 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "path";
-import type { AnalysisResult, Issue, Repository } from "../src/types/index";
+import type { Issue, Repository } from "../src/types/index";
+import {
+  callAnthropic as _callAnthropicBinding,
+  analyzeCodeForIssue as _analyzeCodeForIssueBinding,
+  createPRDescription as _createPRDescriptionBinding,
+  generateFix as _generateFixBinding,
+  AnthropicAPIError as _anthropicApiErrorBinding,
+  RateLimitError as _rateLimitErrorBinding,
+} from "../src/lib/anthropic";
+
+const _realCallAnthropic = _callAnthropicBinding;
+const _realAnalyzeCodeForIssue = _analyzeCodeForIssueBinding;
+const _realCreatePRDescription = _createPRDescriptionBinding;
+const _realGenerateFix = _generateFixBinding;
+const _realAnthropicApiError = _anthropicApiErrorBinding;
+const _realRateLimitError = _rateLimitErrorBinding;
+
+type AnalyzerAnthropicResponse = {
+  rootCause: string;
+  affectedFiles: string[];
+  suggestedApproach: string;
+  complexity: "low" | "medium" | "high";
+  confidence: number;
+};
+
+let currentCallAnthropicImpl: (options: {
+  apiKey: string;
+  system: string;
+  prompt: string;
+  maxTokens: number;
+}) => Promise<string> = _realCallAnthropic;
+
+mock.module("../src/lib/anthropic", () => ({
+  callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
+    currentCallAnthropicImpl(options),
+  analyzeCodeForIssue: _realAnalyzeCodeForIssue,
+  createPRDescription: _realCreatePRDescription,
+  generateFix: _realGenerateFix,
+  AnthropicAPIError: _realAnthropicApiError,
+  RateLimitError: _realRateLimitError,
+}));
 
 function toStream(text: string): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -25,7 +66,7 @@ function createMockProcess(options: {
   } as unknown as Bun.Subprocess;
 }
 
-const repoFixture: Repository = {
+const repositoryFixture: Repository = {
   id: 1,
   name: "demo-repo",
   fullName: "acme/demo-repo",
@@ -33,47 +74,55 @@ const repoFixture: Repository = {
   stars: 100,
   language: "TypeScript",
   openIssuesCount: 10,
-  updatedAt: "2026-03-31T00:00:00.000Z",
-  description: "demo",
+  updatedAt: "2026-04-01T00:00:00.000Z",
+  description: "Demo repository",
 };
 
 const issueFixture: Issue = {
   id: 42,
   number: 42,
   title: "Fix parser null handling",
-  body: "Investigate src/parser.ts and src/api/client.ts",
+  body: "Investigate src/parser.ts and src/api/client.ts when payload parsing fails.",
   url: "https://github.com/acme/demo-repo/issues/42",
   repoFullName: "acme/demo-repo",
   labels: ["bug"],
-  createdAt: "2026-03-31T00:00:00.000Z",
+  createdAt: "2026-04-01T00:00:00.000Z",
   assignees: [],
 };
 
-const analysisFixture: AnalysisResult = {
-  issueId: 42,
-  repoFullName: "acme/demo-repo",
-  relevantFiles: ["src/parser.ts"],
-  suggestedApproach: "Add null guards and update parser flow.",
-  confidence: 0.9,
-  analyzedAt: "2026-03-31T12:00:00.000Z",
+const anthropicResponseFixture: AnalyzerAnthropicResponse = {
+  rootCause: "The parser assumes payload is always present and the API client forwards null values unchecked.",
+  affectedFiles: ["src/parser.ts", "src/api/client.ts"],
+  suggestedApproach: "Add a null guard in the parser and normalize nullable payloads in the API client.",
+  complexity: "medium",
+  confidence: 0.88,
 };
+
+let analyzerModuleLoadCounter = 0;
+
+function loadAnalyzerWithAnthropicMock(
+  implementation: (options: {
+    apiKey: string;
+    system: string;
+    prompt: string;
+    maxTokens: number;
+  }) => Promise<string>,
+): Promise<typeof import("../src/lib/analyzer")> {
+  currentCallAnthropicImpl = implementation;
+  analyzerModuleLoadCounter += 1;
+  return import(`../src/lib/analyzer.ts?cacheBust=${analyzerModuleLoadCounter}`);
+}
 
 describe("analyzeCodebase", () => {
   let spawnMock: ReturnType<typeof spyOn<typeof Bun, "spawn">>;
   let warnMock: ReturnType<typeof spyOn>;
-  const createdPaths: string[] = [];
-
-  function loadAnalyzerWithAnthropicMock(
-    impl: (opts: { issue: Issue; codeContext: string; apiKey: string }) => Promise<AnalysisResult>,
-  ): Promise<typeof import("../src/lib/analyzer")> {
-    mock.module("../src/lib/anthropic", () => ({
-      analyzeCodeForIssue: impl,
-    }));
-
-    return import(`../src/lib/analyzer.ts?cacheBust=${Date.now()}`);
-  }
+  let previousCwd = "";
+  let workspaceTempDir = "";
 
   beforeEach(async () => {
+    previousCwd = process.cwd();
+    workspaceTempDir = await mkdtemp(path.join(tmpdir(), "gittributor-analyzer-test-"));
+    process.chdir(workspaceTempDir);
     spyOn(Date, "now").mockReturnValue(1711886400000);
     spawnMock = spyOn(Bun, "spawn");
 
@@ -81,17 +130,26 @@ describe("analyzeCodebase", () => {
     warnMock = spyOn(loggerModule, "warn").mockImplementation(() => undefined);
   });
 
-  afterEach(() => {
-    for (const target of createdPaths) {
-      rmSync(target, { recursive: true, force: true });
-    }
-
-    rmSync(path.join(process.cwd(), ".gittributor"), { recursive: true, force: true });
+  afterEach(async () => {
+    process.chdir(previousCwd);
+    await rm(workspaceTempDir, { recursive: true, force: true });
+    currentCallAnthropicImpl = _realCallAnthropic;
     mock.restore();
+    mock.module("../src/lib/anthropic", () => ({
+      callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
+        currentCallAnthropicImpl(options),
+      analyzeCodeForIssue: _realAnalyzeCodeForIssue,
+      createPRDescription: _realCreatePRDescription,
+      generateFix: _realGenerateFix,
+      AnthropicAPIError: _realAnthropicApiError,
+      RateLimitError: _realRateLimitError,
+    }));
   });
 
-  it("checks repository size first and skips clone for repositories larger than 100MB", async () => {
-    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async () => analysisFixture);
+  it("skips cloning repositories larger than 100MB and returns a warning analysis", async () => {
+    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async () => {
+      throw new Error("Anthropic should not be called for oversized repositories");
+    });
 
     spawnMock.mockReturnValueOnce(
       createMockProcess({
@@ -99,32 +157,37 @@ describe("analyzeCodebase", () => {
       }),
     );
 
-    const result = await analyzeCodebase(repoFixture, issueFixture);
-    const largeRepoResult = result as AnalysisResult & {
-      complexity?: "low" | "medium" | "high";
-      rootCause?: string;
-      affectedFiles?: string[];
-    };
+    const result = await analyzeCodebase(repositoryFixture, issueFixture);
 
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(spawnMock).toHaveBeenNthCalledWith(1, {
-      cmd: ["gh", "repo", "view", repoFixture.fullName, "--json", "diskUsage"],
+      cmd: ["gh", "repo", "view", repositoryFixture.fullName, "--json", "diskUsage"],
       stdout: "pipe",
       stderr: "pipe",
     });
-    expect(largeRepoResult.complexity).toBe("high");
-    expect(largeRepoResult.confidence).toBe(0);
-    expect(largeRepoResult.rootCause).toBe("repo too large to analyze");
-    expect(largeRepoResult.affectedFiles).toEqual([]);
-    expect(warnMock).toHaveBeenCalled();
+    expect(result).toMatchObject({
+      issueId: issueFixture.id,
+      repoFullName: repositoryFixture.fullName,
+      relevantFiles: [],
+      confidence: 0,
+      rootCause: "repo too large to analyze",
+      affectedFiles: [],
+      complexity: "high",
+    });
+    expect(warnMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(readFileSync(path.join(process.cwd(), ".gittributor", "analysis.json"), "utf8"))).toEqual(
+      result,
+    );
   });
 
-  it("shallow clones, analyzes max five files, saves analysis, and cleans temp dir", async () => {
-    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async ({ codeContext }) => {
-      const fileBlockCount = codeContext.match(/^File: /gm)?.length ?? 0;
-      expect(fileBlockCount).toBe(5);
+  it("shallow clones, limits analysis to five files, persists analysis, and cleans the temp directory", async () => {
+    let capturedSystem = "";
+    let capturedPrompt = "";
 
-      return analysisFixture;
+    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async (options) => {
+      capturedSystem = options.system;
+      capturedPrompt = options.prompt;
+      return JSON.stringify(anthropicResponseFixture);
     });
 
     spawnMock
@@ -134,11 +197,9 @@ describe("analyzeCodebase", () => {
           typeof spawnArg === "object" && spawnArg !== null && "cmd" in spawnArg
             ? ((spawnArg as { cmd: string[] }).cmd[4] ?? "")
             : "";
-        createdPaths.push(cloneTarget);
 
         mkdirSync(path.join(cloneTarget, "src", "api"), { recursive: true });
         mkdirSync(path.join(cloneTarget, "src", "utils"), { recursive: true });
-
         writeFileSync(path.join(cloneTarget, "src", "parser.ts"), "export const parser = true;\n");
         writeFileSync(path.join(cloneTarget, "src", "api", "client.ts"), "export const client = true;\n");
         writeFileSync(path.join(cloneTarget, "src", "utils", "a.ts"), "export const a = 1;\n");
@@ -149,22 +210,17 @@ describe("analyzeCodebase", () => {
         return createMockProcess({});
       });
 
-    const result = await analyzeCodebase(repoFixture, issueFixture);
+    const result = await analyzeCodebase(repositoryFixture, issueFixture);
+    const cloneTarget = path.join(tmpdir(), `gittributor-${repositoryFixture.name}-${Date.now()}`);
+    const persistedAnalysisPath = path.join(process.cwd(), ".gittributor", "analysis.json");
 
-    expect(result).toMatchObject({
-      issueId: analysisFixture.issueId,
-      repoFullName: analysisFixture.repoFullName,
-      suggestedApproach: analysisFixture.suggestedApproach,
-      confidence: analysisFixture.confidence,
-    });
-    expect(result.relevantFiles).toHaveLength(5);
     expect(spawnMock).toHaveBeenNthCalledWith(2, {
       cmd: [
         "gh",
         "repo",
         "clone",
-        repoFixture.fullName,
-        path.join(tmpdir(), `${repoFixture.name}-${Date.now()}`),
+        repositoryFixture.fullName,
+        cloneTarget,
         "--",
         "--depth",
         "1",
@@ -173,23 +229,43 @@ describe("analyzeCodebase", () => {
       stderr: "pipe",
     });
 
-    const analysisPath = path.join(process.cwd(), ".gittributor", "analysis.json");
-    expect(existsSync(analysisPath)).toBe(true);
-    expect(JSON.parse(readFileSync(analysisPath, "utf8"))).toEqual(result);
+    expect(capturedSystem).toBe(
+      "You are analyzing a codebase to understand a GitHub issue. Identify the root cause and suggest which files need changes.",
+    );
+    expect(capturedPrompt).toContain(issueFixture.title);
+    expect(capturedPrompt).toContain(issueFixture.body as string);
+    expect(capturedPrompt).toContain(repositoryFixture.fullName);
+    expect(capturedPrompt).toContain("File: src/parser.ts");
+    expect(capturedPrompt).toContain("File: src/api/client.ts");
+    expect(capturedPrompt.match(/^File: /gm)?.length).toBe(5);
+    expect(capturedPrompt).not.toContain("File: src/utils/d.ts");
 
-    const cloneTarget = path.join(tmpdir(), `${repoFixture.name}-${Date.now()}`);
+    expect(result).toMatchObject({
+      issueId: issueFixture.id,
+      repoFullName: repositoryFixture.fullName,
+      suggestedApproach: anthropicResponseFixture.suggestedApproach,
+      confidence: anthropicResponseFixture.confidence,
+      rootCause: anthropicResponseFixture.rootCause,
+      affectedFiles: anthropicResponseFixture.affectedFiles,
+      complexity: anthropicResponseFixture.complexity,
+    });
+    expect(result.relevantFiles).toEqual(anthropicResponseFixture.affectedFiles);
+    expect(Number.isNaN(Date.parse(result.analyzedAt))).toBe(false);
+
+    expect(existsSync(persistedAnalysisPath)).toBe(true);
+    expect(JSON.parse(readFileSync(persistedAnalysisPath, "utf8"))).toEqual(result);
     expect(existsSync(cloneTarget)).toBe(false);
   });
 
-  it("truncates files to 500 lines with truncation marker", async () => {
-    const longFileLines = Array.from({ length: 520 }, (_, index) => `const x${index} = ${index};`).join(
+  it("truncates analyzed files to 500 lines and appends the truncation marker", async () => {
+    const longFileLines = Array.from({ length: 520 }, (_, index) => `const value${index} = ${index};`).join(
       "\n",
     );
 
-    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async ({ codeContext }) => {
-      expect(codeContext).toContain("// [...truncated at 500 lines...]");
-      expect(codeContext).not.toContain("const x519 = 519;");
-      return analysisFixture;
+    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async (options) => {
+      expect(options.prompt).toContain("// [...truncated at 500 lines...]");
+      expect(options.prompt).not.toContain("const value519 = 519;");
+      return JSON.stringify(anthropicResponseFixture);
     });
 
     spawnMock
@@ -199,16 +275,16 @@ describe("analyzeCodebase", () => {
           typeof spawnArg === "object" && spawnArg !== null && "cmd" in spawnArg
             ? ((spawnArg as { cmd: string[] }).cmd[4] ?? "")
             : "";
-        createdPaths.push(cloneTarget);
+
         mkdirSync(path.join(cloneTarget, "src"), { recursive: true });
         writeFileSync(path.join(cloneTarget, "src", "parser.ts"), longFileLines);
         return createMockProcess({});
       });
 
-    await analyzeCodebase(repoFixture, issueFixture);
+    await analyzeCodebase(repositoryFixture, issueFixture);
   });
 
-  it("cleans up temp directory when analysis fails", async () => {
+  it("removes the temp clone directory when Anthropic analysis fails", async () => {
     const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async () => {
       throw new Error("analysis failed");
     });
@@ -220,15 +296,16 @@ describe("analyzeCodebase", () => {
           typeof spawnArg === "object" && spawnArg !== null && "cmd" in spawnArg
             ? ((spawnArg as { cmd: string[] }).cmd[4] ?? "")
             : "";
-        createdPaths.push(cloneTarget);
+
         mkdirSync(path.join(cloneTarget, "src"), { recursive: true });
         writeFileSync(path.join(cloneTarget, "src", "parser.ts"), "export const parser = true;\n");
         return createMockProcess({});
       });
 
-    await expect(analyzeCodebase(repoFixture, issueFixture)).rejects.toThrow("analysis failed");
+    expect(analyzeCodebase(repositoryFixture, issueFixture)).rejects.toThrow("analysis failed");
 
-    const cloneTarget = path.join(tmpdir(), `${repoFixture.name}-${Date.now()}`);
-    expect(existsSync(cloneTarget)).toBe(false);
+    expect(existsSync(path.join(tmpdir(), `gittributor-${repositoryFixture.name}-${Date.now()}`))).toBe(
+      false,
+    );
   });
 });

@@ -2,21 +2,72 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { GitHubAPIError as _GitHubAPIErrorBinding, GitHubClient as _GitHubClientBinding } from "../src/lib/github";
 import type { Issue, Repository } from "../src/types";
+import type { PRSubmission } from "../src/types/index";
 
-const mockSearchIssues = mock(async () => [] as Issue[]);
+const _realGitHubClient = _GitHubClientBinding;
+const _realGitHubAPIError = _GitHubAPIErrorBinding;
 
-mock.module("../src/lib/github", () => {
-  class MockGitHubClient {
-    searchIssues = mockSearchIssues;
+let _currentGitHubClientClass: typeof _realGitHubClient = _realGitHubClient;
+
+class GitHubClientMockWrapper {
+  private readonly client: InstanceType<typeof _realGitHubClient>;
+
+  constructor() {
+    this.client = new _currentGitHubClientClass();
   }
 
-  return {
-    GitHubClient: MockGitHubClient,
-  };
-});
+  searchRepositories(opts: { minStars: number; languages: string[]; limit: number }): Promise<Repository[]> {
+    return this.client.searchRepositories(opts);
+  }
 
-const { discoverIssues } = await import("../src/commands/analyze");
+  searchIssues(repoFullName: string, opts: { labels: string[]; limit: number }): Promise<Issue[]> {
+    return this.client.searchIssues(repoFullName, opts);
+  }
+
+  forkRepo(repoFullName: string): Promise<string> {
+    return this.client.forkRepo(repoFullName);
+  }
+
+  createBranch(repoPath: string, branchName: string): Promise<void> {
+    return this.client.createBranch(repoPath, branchName);
+  }
+
+  commitAndPush(repoPath: string, message: string, branchName: string): Promise<void> {
+    return this.client.commitAndPush(repoPath, message, branchName);
+  }
+
+  createPR(opts: { upstreamRepo: string; branchName: string; title: string; body: string }): Promise<PRSubmission> {
+    return this.client.createPR(opts);
+  }
+}
+
+function establishGitHubModuleMock(): void {
+  mock.module("../src/lib/github", () => ({
+    GitHubClient: GitHubClientMockWrapper,
+    GitHubAPIError: _realGitHubAPIError,
+  }));
+}
+
+establishGitHubModuleMock();
+
+const mockSearchIssues = mock(
+  async (_repoFullName: string, _opts: { labels: string[]; limit: number }) => [] as Issue[],
+);
+
+let analyzeModuleLoadCounter = 0;
+
+async function loadAnalyzeCommandWithGitHubMock(): Promise<typeof import("../src/commands/analyze")> {
+  _currentGitHubClientClass = class AnalyzeGitHubClientMock extends _realGitHubClient {
+    override searchIssues(repoFullName: string, opts: { labels: string[]; limit: number }): Promise<Issue[]> {
+      return mockSearchIssues(repoFullName, opts);
+    }
+  };
+
+  analyzeModuleLoadCounter += 1;
+  return import(`../src/commands/analyze.ts?cacheBust=${analyzeModuleLoadCounter}`);
+}
 
 const repoFixture: Repository = {
   id: 1,
@@ -65,10 +116,14 @@ describe("discoverIssues", () => {
     Date.now = originalNow;
     process.chdir(originalCwd);
     await rm(tempDir, { recursive: true, force: true });
+    _currentGitHubClientClass = _realGitHubClient;
     mock.restore();
+    establishGitHubModuleMock();
   });
 
   it("filters assigned issues", async () => {
+    const { discoverIssues } = await loadAnalyzeCommandWithGitHubMock();
+
     mockSearchIssues.mockResolvedValue([
       makeIssue({ id: 1, number: 1, assignees: ["alice"] }),
       makeIssue({ id: 2, number: 2, assignees: [] }),
@@ -81,6 +136,8 @@ describe("discoverIssues", () => {
   });
 
   it("filters stale issues older than 30 days based on updatedAt", async () => {
+    const { discoverIssues } = await loadAnalyzeCommandWithGitHubMock();
+
     mockSearchIssues.mockResolvedValue([
       makeIssue({ id: 1, number: 1, updatedAt: "2026-02-15T00:00:00.000Z" }),
       makeIssue({ id: 2, number: 2, updatedAt: "2026-03-10T00:00:00.000Z" }),
@@ -93,6 +150,8 @@ describe("discoverIssues", () => {
   });
 
   it("sorts by approachability score descending", async () => {
+    const { discoverIssues } = await loadAnalyzeCommandWithGitHubMock();
+
     mockSearchIssues.mockResolvedValue([
       makeIssue({
         id: 10,
@@ -120,6 +179,8 @@ describe("discoverIssues", () => {
   });
 
   it("returns empty array when no issues pass filters", async () => {
+    const { discoverIssues } = await loadAnalyzeCommandWithGitHubMock();
+
     mockSearchIssues.mockResolvedValue([
       makeIssue({ id: 1, number: 1, assignees: ["alice"] }),
       makeIssue({
@@ -139,6 +200,8 @@ describe("discoverIssues", () => {
   });
 
   it("persists discovered issues to .gittributor/issues.json", async () => {
+    const { discoverIssues } = await loadAnalyzeCommandWithGitHubMock();
+
     const persisted = makeIssue({
       id: 99,
       number: 99,

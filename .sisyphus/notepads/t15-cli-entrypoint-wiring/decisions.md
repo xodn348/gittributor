@@ -1,0 +1,4 @@
+- 2026-04-01: Kept `src/index.ts` as the only new production source file and used existing command/library modules for dispatch rather than introducing a new CLI framework or extra command wrapper files.
+- 2026-04-01: Added `version` and updated the `bin` target in `package.json` so `--version` can read package metadata directly and the published binary resolves to `./src/index.ts`.
+- 2026-04-01: Updated `package.json#module` to `src/index.ts` so package metadata is consistent with the new CLI entrypoint instead of still referencing the placeholder root `index.ts`.
+- 2026-04-01: Kept the existing `src/index.ts` implementation because it already satisfied the T15 behavior checks, and limited the production change set to the `package.json` bin normalization plus a safer isolated test harness.

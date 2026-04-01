@@ -1,0 +1,8 @@
+- 2026-04-01: `src/index.ts` can stay testable by exporting a small `runCli(argv, { io })` helper while still using `import.meta.main` for the real Bun entrypoint.
+- 2026-04-01: `parseArgs()` returns `help` for unknown commands, so the entrypoint must inspect the original first positional argument to preserve the required unknown-command exit path.
+- 2026-04-01: Bun fixture tests should use an explicit env flag for intentional failures; checking `process.argv` against the file path self-activates those failures during normal suite runs.
+- 2026-04-01: Loading runtime config only for commands that need it keeps `review` and `submit` usable even when Anthropic/GitHub env vars are absent.
+- 2026-04-01: The entrypoint needs its own command-shape validation because `src/commands/cli.ts` silently normalizes unknown flags instead of rejecting them.
+- 2026-04-01: Bun v1.3.9 rejects `bunfig.toml` with `preload = []`; removing the empty preload entry is required before `bun test tests/` will start.
+- 2026-04-01: For this repo, end-to-end CLI tests are most reliable with `Bun.spawn(["/bin/sh", "-lc", "bun run src/index.ts ..."])` instead of importing the shebang entry file directly.
+- 2026-04-01: Bun `mock.module()` can leak mocked exports across concurrently running test files; an isolated temporary fixture that copies `src/index.ts` and writes stub dependency modules avoids cross-suite contamination while still proving dispatch behavior.

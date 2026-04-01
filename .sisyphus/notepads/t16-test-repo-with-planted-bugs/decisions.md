@@ -1,0 +1,5 @@
+- Added `tests/fixtures/test-preload.ts` plus `bunfig.toml` preload wiring so the fixture test can tell the difference between a direct single-file run and the broad `bun test tests/` suite.
+- Kept the planted bugs in `tests/fixtures/test-repo/src/utils.ts` runtime-visible while avoiding project-wide TypeScript breakage by using the requested `@ts-ignore` only on the intentional comparison bug.
+- Final fixture gating uses process-table inspection inside tests/fixtures/test-repo/tests/utils.test.ts and removes the preload experiment.
+- Fixed unrelated suite regressions in state, submit, and rate-limiter modules so the required main-suite verification could complete cleanly.
+- Matched `tests/fixtures/mock-issues.json` to the actual `Issue` contract in `src/types/index.ts` (`createdAt` present, `state`/`updatedAt`/`approachabilityScore` absent) because the task text's embedded type shape was stale relative to the checked-in code.

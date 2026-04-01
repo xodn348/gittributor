@@ -1,15 +1,16 @@
 {
   "name": "gittributor",
-  "module": "index.ts",
+  "version": "0.1.0",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "bin": {
-    "gittributor": "./bin/gittributor.ts"
+    "gittributor": "src/index.ts"
   },
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun build ./bin/gittributor.ts --outdir=./dist --target=bun"
+    "build": "bun build ./src/index.ts --outdir=./dist --target=bun"
   },
   "devDependencies": {
     "@types/bun": "latest"
