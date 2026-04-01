@@ -30,6 +30,12 @@ interface CliFixture {
 
 declare global {
   var __gittributorCliEntrypointStubState: StubState | undefined;
+  var __gittributorCliEntrypointConfigEnv:
+    | {
+        ANTHROPIC_API_KEY?: string;
+        GITHUB_TOKEN?: string;
+      }
+    | undefined;
 }
 
 const packageJson = await Bun.file(new URL("../package.json", import.meta.url)).json() as {
@@ -111,7 +117,10 @@ const createFixture = async (): Promise<CliFixture> => {
 
   globalThis.__gittributorCliEntrypointStubState = stubState;
 
-  await Bun.write(join(tempDir, "package.json"), JSON.stringify({ name: "gittributor", version: packageVersion, type: "module" }, null, 2));
+  await Bun.write(
+    join(tempDir, "package.json"),
+    JSON.stringify({ name: "gittributor", version: packageVersion, type: "module" }, null, 2),
+  );
   await Bun.write(join(tempDir, "src", "index.ts"), realIndexSource);
   await Bun.write(join(tempDir, "src", "commands", "cli.ts"), realCliSource);
   await Bun.write(join(tempDir, "src", "types", "guards.ts"), realGuardsSource);
@@ -122,8 +131,14 @@ const createFixture = async (): Promise<CliFixture> => {
     join(tempDir, "src", "commands", "discover.ts"),
     `import { getStubState } from "../test-stubs";
 
-export const discoverRepos = async (): Promise<[]> => {
+export const discoverRepos = async (options: unknown): Promise<unknown[]> => {
   getStubState().discoverReposCalls += 1;
+  const recordedPath = Bun.env.GITTRIBUTOR_DISCOVER_OPTIONS_PATH;
+
+  if (recordedPath) {
+    await Bun.write(recordedPath, JSON.stringify(options, null, 2));
+  }
+
   return [];
 };
 `,
@@ -133,7 +148,7 @@ export const discoverRepos = async (): Promise<[]> => {
     join(tempDir, "src", "commands", "analyze.ts"),
     `import { getStubState } from "../test-stubs";
 
-export const discoverIssues = async (): Promise<[]> => {
+export const discoverIssues = async (): Promise<unknown[]> => {
   getStubState().discoverIssuesCalls += 1;
   return [];
 };
@@ -205,13 +220,25 @@ export const generateFix = async () => {
 }
 
 export const loadConfig = async () => {
+  const configEnv = globalThis.__gittributorCliEntrypointConfigEnv ?? Bun.env;
+  const anthropicApiKey = configEnv.ANTHROPIC_API_KEY?.trim();
+  const githubToken = configEnv.GITHUB_TOKEN?.trim();
+
+  if (!anthropicApiKey) {
+    throw new ConfigError("Missing required environment variable: ANTHROPIC_API_KEY");
+  }
+
+  if (!githubToken) {
+    throw new ConfigError("Missing required environment variable: GITHUB_TOKEN");
+  }
+
   return {
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+    anthropicApiKey,
     minStars: 50,
     maxPRsPerDay: 5,
     maxPRsPerRepo: 1,
     targetLanguages: ["typescript"],
-    verbose: false,
+    verbose: Bun.env.GITTRIBUTOR_STUB_LOADED_VERBOSE === "true",
   };
 };
 `,
@@ -299,6 +326,17 @@ describe("runCli", () => {
     process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
     process.env.GITHUB_TOKEN = "test-github-token";
     process.env.VERBOSE = "false";
+    delete process.env.GITTRIBUTOR_DISCOVER_OPTIONS_PATH;
+    delete process.env.GITTRIBUTOR_STUB_LOADED_VERBOSE;
+    Bun.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    Bun.env.GITHUB_TOKEN = "test-github-token";
+    Bun.env.VERBOSE = "false";
+    delete Bun.env.GITTRIBUTOR_DISCOVER_OPTIONS_PATH;
+    delete Bun.env.GITTRIBUTOR_STUB_LOADED_VERBOSE;
+    globalThis.__gittributorCliEntrypointConfigEnv = {
+      ANTHROPIC_API_KEY: "test-anthropic-key",
+      GITHUB_TOKEN: "test-github-token",
+    };
   });
 
   afterEach(async () => {
@@ -309,7 +347,23 @@ describe("runCli", () => {
       }
     }
 
+    delete globalThis.__gittributorCliEntrypointConfigEnv;
     process.env = { ...originalEnv };
+    Bun.env.ANTHROPIC_API_KEY = originalEnv.ANTHROPIC_API_KEY;
+    Bun.env.GITHUB_TOKEN = originalEnv.GITHUB_TOKEN;
+    Bun.env.VERBOSE = originalEnv.VERBOSE;
+
+    if (originalEnv.GITTRIBUTOR_DISCOVER_OPTIONS_PATH) {
+      Bun.env.GITTRIBUTOR_DISCOVER_OPTIONS_PATH = originalEnv.GITTRIBUTOR_DISCOVER_OPTIONS_PATH;
+    } else {
+      delete Bun.env.GITTRIBUTOR_DISCOVER_OPTIONS_PATH;
+    }
+
+    if (originalEnv.GITTRIBUTOR_STUB_LOADED_VERBOSE) {
+      Bun.env.GITTRIBUTOR_STUB_LOADED_VERBOSE = originalEnv.GITTRIBUTOR_STUB_LOADED_VERBOSE;
+    } else {
+      delete Bun.env.GITTRIBUTOR_STUB_LOADED_VERBOSE;
+    }
   });
 
   const useFixture = async (): Promise<CliFixture> => {
@@ -407,6 +461,88 @@ describe("runCli", () => {
     await fixture.runCli(["--verbose", "review"]);
 
     expect(process.env.VERBOSE).toBe("true");
+    expect(fixture.state.reviewFixCalls).toBe(1);
+  });
+
+  it("loads config before dispatching review when --config is provided", async () => {
+    globalThis.__gittributorCliEntrypointConfigEnv = {
+      GITHUB_TOKEN: "test-github-token",
+    };
+    const fixture = await useFixture();
+    const configDirectory = await mkdtemp(join(tmpdir(), "gittributor-cli-config-"));
+    const configPath = join(configDirectory, "gittributor.config.json");
+    fixtures.push({
+      cleanup: async () => {
+        await rm(configDirectory, { recursive: true, force: true });
+      },
+      runCli: fixture.runCli,
+      state: fixture.state,
+    });
+    const output = createIo();
+
+    await Bun.write(configPath, JSON.stringify({ minStars: 120 }, null, 2));
+
+    const result = await fixture.runCli(["--config", configPath, "review"], { io: output.io });
+
+    expect(result.exitCode).toBe(1);
+    expect(fixture.state.reviewFixCalls).toBe(0);
+    expect(output.readStderr()).toContain("Missing required environment variable: ANTHROPIC_API_KEY");
+  });
+
+  it("applies config file overrides before discover dispatch", async () => {
+    const fixture = await useFixture();
+    const configDirectory = await mkdtemp(join(tmpdir(), "gittributor-cli-config-"));
+    const configPath = join(configDirectory, "gittributor.config.json");
+    const recordedOptionsPath = join(configDirectory, "discover-options.json");
+    fixtures.push({
+      cleanup: async () => {
+        await rm(configDirectory, { recursive: true, force: true });
+      },
+      runCli: fixture.runCli,
+      state: fixture.state,
+    });
+
+    await Bun.write(
+      configPath,
+      JSON.stringify({ minStars: 120, targetLanguages: ["rust"] }, null, 2),
+    );
+    process.env.GITTRIBUTOR_DISCOVER_OPTIONS_PATH = recordedOptionsPath;
+    Bun.env.GITTRIBUTOR_DISCOVER_OPTIONS_PATH = recordedOptionsPath;
+
+    const result = await fixture.runCli(["--config", configPath, "discover"]);
+    const recordedOptions = await Bun.file(recordedOptionsPath).json();
+
+    expect(result.exitCode).toBe(0);
+    expect(fixture.state.discoverReposCalls).toBe(1);
+    expect(recordedOptions).toEqual({
+      language: "rust",
+      minStars: 120,
+      limit: undefined,
+    });
+  });
+
+  it("allows config file verbose false to override a true loaded config default", async () => {
+    const fixture = await useFixture();
+    const configDirectory = await mkdtemp(join(tmpdir(), "gittributor-cli-config-"));
+    const configPath = join(configDirectory, "gittributor.config.json");
+    fixtures.push({
+      cleanup: async () => {
+        await rm(configDirectory, { recursive: true, force: true });
+      },
+      runCli: fixture.runCli,
+      state: fixture.state,
+    });
+
+    await Bun.write(configPath, JSON.stringify({ verbose: false }, null, 2));
+    process.env.GITTRIBUTOR_STUB_LOADED_VERBOSE = "true";
+    Bun.env.GITTRIBUTOR_STUB_LOADED_VERBOSE = "true";
+    process.env.VERBOSE = "false";
+    Bun.env.VERBOSE = "false";
+
+    const result = await fixture.runCli(["--config", configPath, "review"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(process.env.VERBOSE).toBe("false");
     expect(fixture.state.reviewFixCalls).toBe(1);
   });
 });

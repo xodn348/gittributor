@@ -279,10 +279,11 @@ const loadConfigOverrides = async (configPath: string): Promise<ConfigOverrides>
 const resolveRuntimeConfig = async (globalFlags: GlobalFlags): Promise<Config> => {
   const loadedConfig = await loadConfig();
   const configOverrides = globalFlags.configPath ? await loadConfigOverrides(globalFlags.configPath) : {};
+  const verbose = globalFlags.verbose ? true : (configOverrides.verbose ?? loadedConfig.verbose);
   const runtimeConfig: Config = {
     ...loadedConfig,
     ...configOverrides,
-    verbose: globalFlags.verbose || configOverrides.verbose || loadedConfig.verbose,
+    verbose,
   };
 
   if (runtimeConfig.verbose) {
@@ -434,13 +435,15 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
     return printHelp(output);
   }
 
+  const runtimeConfig = globalFlags.configPath ? await resolveRuntimeConfig(globalFlags) : null;
+
   switch (parsedArgs.command) {
     case "discover":
-      return runDiscoverCommand(await resolveRuntimeConfig(globalFlags), commandArgs);
+      return runDiscoverCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs);
     case "analyze":
       return runAnalyzeCommand();
     case "fix":
-      await resolveRuntimeConfig(globalFlags);
+      await (runtimeConfig ?? resolveRuntimeConfig(globalFlags));
       return runFixCommand();
     case "review":
       return reviewFix();

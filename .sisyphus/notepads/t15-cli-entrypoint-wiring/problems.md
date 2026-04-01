@@ -1,0 +1,2 @@
+- No unresolved problems remain for T15 after the config-before-dispatch fix and full-suite verification.
+- No additional unresolved problems remain after restoring the focused test command, executable bit, and full-suite verification.

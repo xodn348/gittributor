@@ -1,3 +1,2 @@
-- 2026-04-01: `bun test tests/` initially failed outside the new CLI work because `tests/fixtures/test-repo/tests/utils.test.ts` always enabled intentionally failing cases. Fixed by making those cases opt-in through `GITTRIBUTOR_RUN_FIXTURE_FAILURES=true`.
-- 2026-04-01: Oracle review found that eager config loading blocked unrelated commands and that unsupported command flags were silently accepted. Fixed by making config loading command-specific and validating allowed flags/positionals in the entrypoint.
-- 2026-04-01: The first rewrite of `tests/cli-entrypoint.test.ts` still polluted `submit` and `state` tests because mocked command/state modules were shared process-wide during parallel Bun runs; replacing those mocks with per-test temporary stub modules resolved the suite failures.
+- The existing working tree contains unrelated modified files from other tasks, so this task's commit must stage only `src/index.ts`, `tests/cli-entrypoint.test.ts`, and `tests/index.test.ts`.
+- `bunfig.toml` had been locally changed in a way that destabilized focused test execution, so restoring the committed test root config was necessary before final verification.

@@ -1,4 +1,3 @@
-- 2026-04-01: Kept `src/index.ts` as the only new production source file and used existing command/library modules for dispatch rather than introducing a new CLI framework or extra command wrapper files.
-- 2026-04-01: Added `version` and updated the `bin` target in `package.json` so `--version` can read package metadata directly and the published binary resolves to `./src/index.ts`.
-- 2026-04-01: Updated `package.json#module` to `src/index.ts` so package metadata is consistent with the new CLI entrypoint instead of still referencing the placeholder root `index.ts`.
-- 2026-04-01: Kept the existing `src/index.ts` implementation because it already satisfied the T15 behavior checks, and limited the production change set to the `package.json` bin normalization plus a safer isolated test harness.
+- Kept the existing `src/index.ts` entrypoint and tightened its dispatch flow instead of replacing it, because the file already matched the required CLI surface and only needed consistent config initialization plus executable permissions.
+- Used an isolated fixture-based command-module mocking test instead of persistent `mock.module` hooks so `bun test` stays green across the full repository.
+- Kept config loading conditional for `review` and `submit` unless `--config` is explicitly provided, which satisfies the global-flag contract without regressing the existing no-env review path.
