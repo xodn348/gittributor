@@ -48,4 +48,10 @@ describe("parseArgs", () => {
       expect(parsed.command).toBe(command);
     }
   });
+
+  test("throws when --language is provided with an empty value", () => {
+    expect(() => parseArgs(["discover", "--language="])).toThrow(
+      "Invalid value for --language",
+    );
+  });
 });

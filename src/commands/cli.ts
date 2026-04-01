@@ -16,11 +16,18 @@ export interface ParsedArgs {
   positionals: string[];
 }
 
+export class CLIArgumentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CLIArgumentError";
+  }
+}
+
 const parseNumberFlag = (name: string, value: string): number => {
   const parsedValue = Number(value);
 
   if (!Number.isInteger(parsedValue)) {
-    throw new Error(`Invalid value for ${name}: ${value}`);
+    throw new CLIArgumentError(`Invalid value for ${name}: ${value}`);
   }
 
   return parsedValue;
@@ -57,7 +64,13 @@ export const parseArgs = (argv: string[]): ParsedArgs => {
     }
 
     if (argument.startsWith("--language=")) {
-      flags.language = argument.slice("--language=".length);
+      const language = argument.slice("--language=".length).trim();
+
+      if (!language) {
+        throw new CLIArgumentError("Invalid value for --language");
+      }
+
+      flags.language = language;
       continue;
     }
 

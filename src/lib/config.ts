@@ -108,7 +108,9 @@ export const loadConfig = async (): Promise<Config> => {
     minStars: configFileOverrides.minStars ?? DEFAULT_CONFIG.minStars,
     maxPRsPerDay: configFileOverrides.maxPRsPerDay ?? DEFAULT_CONFIG.maxPRsPerDay,
     maxPRsPerRepo: configFileOverrides.maxPRsPerRepo ?? DEFAULT_CONFIG.maxPRsPerRepo,
-    targetLanguages: configFileOverrides.targetLanguages ?? DEFAULT_CONFIG.targetLanguages,
+    targetLanguages: [
+      ...(configFileOverrides.targetLanguages ?? DEFAULT_CONFIG.targetLanguages),
+    ],
     verbose: configFileOverrides.verbose ?? DEFAULT_CONFIG.verbose,
   };
 

@@ -35,6 +35,18 @@ describe("loadConfig", () => {
     });
   });
 
+  test("does not share default targetLanguages array across calls", async () => {
+    Bun.env.ANTHROPIC_API_KEY = "anthropic-key";
+    Bun.env.GITHUB_TOKEN = "gh-token";
+
+    const first = await loadConfig();
+    first.targetLanguages.push("go");
+
+    const second = await loadConfig();
+
+    expect(second.targetLanguages).toEqual(["typescript", "javascript", "python"]);
+  });
+
   test("loads overrides from ~/.gittributorrc.json", async () => {
     const tempHome = await Bun.$`mktemp -d`.text();
     const homeDir = tempHome.trim();
