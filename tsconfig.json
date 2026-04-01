@@ -9,5 +9,6 @@
     "rootDir": ".",
     "types": ["bun-types"]
   },
-  "include": ["src/**/*", "tests/**/*", "bin/**/*"]
+  "include": ["src/**/*", "tests/**/*", "bin/**/*"],
+  "exclude": ["tests/fixtures/test-repo/**/*"]
 }

@@ -2,5 +2,7 @@
 - The real `Issue` type in `src/types/index.ts` uses `repoFullName`, `labels: string[]`, and `assignees: string[]`, so fixture issue mocks must follow that contract instead of GitHub's raw REST shape.
 - In this Bun 1.3.9 setup, the reliable direct-run signal was the process table entry for the exact command string instead of in-process argv or bunfig ignore patterns alone.
 - Keeping the planted bugs diagnostics-clean required using a non-null assertion for the missing-null-check case and a standalone assignment statement for the wrong-operator bug instead of `@ts-ignore` or an assignment-in-condition expression.
+- Bun still discovers `tests/fixtures/test-repo/tests/utils.test.ts` during the broad root suite in this repo, so fixture assertions that are supposed to fail must stay behind a direct-run gate while broad-suite-safe assertions remain always-on.
+- The checked-in `Issue` type still requires `id` and does not include `updatedAt` or `state`, but the mock JSON can safely carry those extra fields to satisfy task-specific fixture metadata without breaking Bun JSON imports.
 - Reusing the fixture test's process-table check keeps `bun test` green for the main suite while still making `bun test tests/fixtures/test-repo/tests/utils.test.ts` fail on demand.
 - The task text's `Issue` shape was stale relative to `src/types/index.ts`, so the safest fixture JSON includes the real required `id` field plus the requested extra metadata like `updatedAt` and `state`.
