@@ -8,7 +8,7 @@ const ANSI_RESET = "\x1b[0m";
 const ANSI_GREEN = "\x1b[32m";
 const ANSI_BOLD = "\x1b[1m";
 
-const DEFAULT_MIN_STARS = 50;
+const DEFAULT_MIN_STARS = 0;
 const DEFAULT_LIMIT = 10;
 const DEFAULT_LANGUAGE = "TypeScript";
 const DEFAULT_DAYS_BACK = 7;
@@ -71,7 +71,8 @@ const normalizeOptions = (options: DiscoverOptions): NormalizedDiscoverOptions =
 
 export const buildDiscoverQuery = (options: DiscoverOptions): string => {
   const normalizedOptions = normalizeOptions(options);
-  return `language:${normalizedOptions.language}+stars:>=${normalizedOptions.minStars}+good-first-issues:>0+created:>=${normalizedOptions.createdAfterText}&sort=stars&order=desc`;
+  const starsFilter = normalizedOptions.minStars > 0 ? `+stars:>=${normalizedOptions.minStars}` : "";
+  return `language:${normalizedOptions.language}${starsFilter}+good-first-issues:>0+created:>=${normalizedOptions.createdAfterText}&sort=stars&order=desc`;
 };
 
 const hasGoodFirstIssueSignals = (repository: RepositoryWithGoodFirstIssueSignals): boolean => {
