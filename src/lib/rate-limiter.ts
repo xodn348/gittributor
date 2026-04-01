@@ -1,6 +1,7 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { FileChange, RepoInfo } from "../types";
+import { StateError } from "./errors";
 
 interface SubmissionRecord {
   repo: string;
@@ -17,6 +18,16 @@ interface RateLimiterOptions {
 interface SafetyCheckerOptions {
   minStars?: number;
   maxSizeMb?: number;
+}
+
+interface RateLimitDecision {
+  allowed: boolean;
+  reason?: string;
+}
+
+interface RateLimiterStatus {
+  dailyRemaining: number;
+  repoLimits: Record<string, Date>;
 }
 
 const STATE_DIRECTORY = ".gittributor";
@@ -39,6 +50,33 @@ const isSubmissionRecord = (value: unknown): value is SubmissionRecord => {
   );
 };
 
+const formatWindowLabel = (windowMs: number): string => {
+  const totalMinutes = Math.ceil(windowMs / (60 * 1000));
+  if (totalMinutes < 60) {
+    return `${totalMinutes} minute${totalMinutes === 1 ? "" : "s"}`;
+  }
+
+  const totalHours = Math.ceil(totalMinutes / 60);
+  if (totalHours <= 24) {
+    return `${totalHours} hour${totalHours === 1 ? "" : "s"}`;
+  }
+
+  const totalDays = Math.ceil(totalHours / 24);
+  return `${totalDays} day${totalDays === 1 ? "" : "s"}`;
+};
+
+export class SubmissionPersistenceError extends StateError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SubmissionPersistenceError";
+  }
+}
+
+const createSubmissionPersistenceError = (message: string, cause: unknown): SubmissionPersistenceError => {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return new SubmissionPersistenceError(`${message}: ${detail}`);
+};
+
 export class RateLimiter {
   private readonly submissionsFilePath: string;
   private readonly maxDailySubmissions: number;
@@ -46,7 +84,7 @@ export class RateLimiter {
   private readonly windowMs: number;
   private submissions: SubmissionRecord[] = [];
   private pendingWrite: Promise<void> = Promise.resolve();
-  private lastPersistenceError: Error | null = null;
+  private lastPersistenceError: SubmissionPersistenceError | null = null;
 
   constructor(options: RateLimiterOptions = {}) {
     this.submissionsFilePath = join(
@@ -57,13 +95,12 @@ export class RateLimiter {
     this.maxDailySubmissions = options.maxDailySubmissions ?? 5;
     this.maxSubmissionsPerRepo = options.maxSubmissionsPerRepo ?? 1;
     this.windowMs = options.windowMs ?? DAY_IN_MS;
-    void this.hydrateSubmissionsFromDisk();
+    this.submissions = this.loadSubmissionsFromDisk();
   }
 
-  canSubmit(repo: string): { allowed: boolean; reason?: string } {
+  canSubmit(repo: string): RateLimitDecision {
     this.throwIfPersistenceFailed();
-    const now = Date.now();
-    this.submissions = this.getRecentSubmissions(now);
+    this.pruneExpiredSubmissions();
 
     const repoRecentSubmissions = this.submissions.filter(
       (submission) => submission.repo === repo,
@@ -72,7 +109,7 @@ export class RateLimiter {
     if (repoRecentSubmissions.length >= this.maxSubmissionsPerRepo) {
       return {
         allowed: false,
-        reason: `Repo limit reached for ${repo}. Try again after 24 hours.`,
+        reason: `Repo limit reached for ${repo}. Try again after ${formatWindowLabel(this.windowMs)}.`,
       };
     }
 
@@ -88,6 +125,7 @@ export class RateLimiter {
 
   recordSubmission(repo: string, prUrl: string): void {
     this.throwIfPersistenceFailed();
+    this.pruneExpiredSubmissions();
 
     const entry: SubmissionRecord = {
       repo,
@@ -95,32 +133,31 @@ export class RateLimiter {
       submittedAt: new Date(Date.now()).toISOString(),
     };
 
-    this.submissions = [...this.getRecentSubmissions(Date.now()), entry];
+    this.submissions = [...this.submissions, entry];
     this.persistSubmissions();
   }
 
-  getStatus(): { dailyRemaining: number; repoLimits: Record<string, Date> } {
+  getStatus(): RateLimiterStatus {
     this.throwIfPersistenceFailed();
-
-    const now = Date.now();
-    const recentSubmissions = this.getRecentSubmissions(now);
+    this.pruneExpiredSubmissions();
+    const recentSubmissions = this.submissions;
     const dailyRemaining = Math.max(
       0,
       this.maxDailySubmissions - recentSubmissions.length,
     );
-    const latestSubmissionByRepo = new Map<string, number>();
+    const submissionsByRepo = new Map<string, SubmissionRecord[]>();
 
     for (const submission of recentSubmissions) {
-      const submissionTime = new Date(submission.submittedAt).getTime();
-      const latestForRepo = latestSubmissionByRepo.get(submission.repo) ?? 0;
-      if (submissionTime > latestForRepo) {
-        latestSubmissionByRepo.set(submission.repo, submissionTime);
-      }
+      const repoSubmissions = submissionsByRepo.get(submission.repo) ?? [];
+      submissionsByRepo.set(submission.repo, [...repoSubmissions, submission]);
     }
 
     const repoLimits: Record<string, Date> = {};
-    for (const [repo, lastSubmissionTime] of latestSubmissionByRepo.entries()) {
-      repoLimits[repo] = new Date(lastSubmissionTime + this.windowMs);
+    for (const [repo, repoSubmissions] of submissionsByRepo.entries()) {
+      const retryTime = this.getRetryTimeForRepo(repoSubmissions);
+      if (retryTime) {
+        repoLimits[repo] = retryTime;
+      }
     }
 
     return {
@@ -129,32 +166,40 @@ export class RateLimiter {
     };
   }
 
-  private async hydrateSubmissionsFromDisk(): Promise<void> {
+  private loadSubmissionsFromDisk(): SubmissionRecord[] {
     try {
-      await mkdir(join(process.cwd(), STATE_DIRECTORY), { recursive: true });
-
-      const submissionsFile = Bun.file(this.submissionsFilePath);
-      if (!(await submissionsFile.exists())) {
-        this.submissions = [];
-        return;
+      if (!existsSync(dirname(this.submissionsFilePath))) {
+        return [];
       }
 
-      const rawContent = await submissionsFile.json();
+      if (!existsSync(this.submissionsFilePath)) {
+        return [];
+      }
+
+      const rawContent = JSON.parse(readFileSync(this.submissionsFilePath, "utf8")) as unknown;
       if (!Array.isArray(rawContent)) {
-        this.submissions = [];
-        return;
+        throw new SubmissionPersistenceError("Failed to load submissions from disk: submissions.json must contain an array");
       }
 
-      this.submissions = rawContent.filter((entry) => isSubmissionRecord(entry));
+      if (!rawContent.every((entry) => isSubmissionRecord(entry))) {
+        throw new SubmissionPersistenceError("Failed to load submissions from disk: submissions.json contains invalid submission entries");
+      }
+
+      return this.getRecentSubmissions(Date.now(), rawContent);
     } catch (error) {
-      this.lastPersistenceError =
-        error instanceof Error ? error : new Error(String(error));
-      this.submissions = [];
+      this.lastPersistenceError = error instanceof SubmissionPersistenceError
+        ? error
+        : createSubmissionPersistenceError("Failed to load submissions from disk", error);
+      return [];
     }
   }
 
-  private getRecentSubmissions(now: number): SubmissionRecord[] {
-    return this.submissions.filter((submission) => {
+  private pruneExpiredSubmissions(): void {
+    this.submissions = this.getRecentSubmissions(Date.now(), this.submissions);
+  }
+
+  private getRecentSubmissions(now: number, submissions: SubmissionRecord[]): SubmissionRecord[] {
+    return submissions.filter((submission) => {
       const submittedAt = new Date(submission.submittedAt).getTime();
       if (!Number.isFinite(submittedAt)) {
         return false;
@@ -165,18 +210,36 @@ export class RateLimiter {
   }
 
   private persistSubmissions(): void {
+    mkdirSync(dirname(this.submissionsFilePath), { recursive: true });
+
     this.pendingWrite = this.pendingWrite
       .then(async () => {
-        await mkdir(join(process.cwd(), STATE_DIRECTORY), { recursive: true });
         await Bun.write(
           this.submissionsFilePath,
           JSON.stringify(this.submissions, null, 2),
         );
       })
       .catch((error) => {
-        this.lastPersistenceError =
-          error instanceof Error ? error : new Error(String(error));
+        this.lastPersistenceError = createSubmissionPersistenceError(
+          "Failed to persist submissions to disk",
+          error,
+        );
       });
+  }
+
+  private getRetryTimeForRepo(submissions: SubmissionRecord[]): Date | null {
+    if (submissions.length < this.maxSubmissionsPerRepo) {
+      return null;
+    }
+
+    const sortedSubmissions = [...submissions].sort((left, right) => {
+      return new Date(left.submittedAt).getTime() - new Date(right.submittedAt).getTime();
+    });
+    const blockingSubmissionIndex = submissions.length - this.maxSubmissionsPerRepo;
+    const blockingSubmission = sortedSubmissions[blockingSubmissionIndex];
+    const blockingTime = new Date(blockingSubmission.submittedAt).getTime();
+
+    return new Date(blockingTime + this.windowMs);
   }
 
   private throwIfPersistenceFailed(): void {
