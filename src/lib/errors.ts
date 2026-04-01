@@ -51,3 +51,10 @@ export class StateError extends GittributorError {
     this.name = "StateError";
   }
 }
+
+export class FixValidationError extends GittributorError {
+  constructor(message: string) {
+    super(message, "FIX_VALIDATION_ERROR");
+    this.name = "FixValidationError";
+  }
+}
