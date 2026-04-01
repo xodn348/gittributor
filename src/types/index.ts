@@ -53,6 +53,20 @@ export interface PRSubmission {
   submittedAt: string;
 }
 
+export interface FileChange {
+  file: string;
+  original: string;
+  modified: string;
+}
+
+export interface RepoInfo {
+  fullName: string;
+  diskUsage: number;
+  stargazerCount: number;
+  isArchived: boolean;
+  hasOpenUserPR?: boolean;
+}
+
 export type PipelineStatus =
   | "idle"
   | "discovered"
