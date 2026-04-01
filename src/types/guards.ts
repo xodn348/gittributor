@@ -117,7 +117,12 @@ const isRecordOf = <T>(
   validator: (inner: unknown) => inner is T,
 ): value is Record<number, T> => {
   if (!isRecord(value)) return false;
-  return Object.values(value).every((entry) => validator(entry));
+
+  return Object.entries(value).every(([key, entry]) => {
+    const numericKey = Number(key);
+
+    return Number.isInteger(numericKey) && String(numericKey) === key && validator(entry);
+  });
 };
 
 export const isPipelineState = (value: unknown): value is PipelineState => {

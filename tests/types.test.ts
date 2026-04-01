@@ -329,6 +329,40 @@ describe("isPipelineState", () => {
 
     expect(isPipelineState(value)).toBe(false);
   });
+
+  test("returns false when analyses or fixes contain non-numeric keys", () => {
+    const value = {
+      version: "1.0",
+      status: "analyzed",
+      repositories: [],
+      issues: [],
+      analyses: {
+        foo: {
+          issueId: 42,
+          repoFullName: "owner/repo",
+          relevantFiles: ["src/index.ts"],
+          suggestedApproach: "Update parser logic",
+          confidence: 0.9,
+          analyzedAt: "2026-03-31T10:00:00.000Z",
+        },
+      },
+      fixes: {
+        bar: {
+          issueId: 42,
+          repoFullName: "owner/repo",
+          patch: "diff --git a b",
+          explanation: "Applied null check",
+          testsPass: true,
+          confidence: 0.85,
+          generatedAt: "2026-03-31T10:00:00.000Z",
+        },
+      },
+      submissions: [],
+      lastUpdated: "2026-03-31T10:00:00.000Z",
+    };
+
+    expect(isPipelineState(value)).toBe(false);
+  });
 });
 
 describe("isConfig", () => {
@@ -380,6 +414,10 @@ describe("union type guards", () => {
     expect(isReviewDecision("pending")).toBe(false);
   });
 
+  test("isReviewDecision returns false for wrong type", () => {
+    expect(isReviewDecision(42)).toBe(false);
+  });
+
   test("isPipelineStatus returns true for fixed", () => {
     expect(isPipelineStatus("fixed")).toBe(true);
   });
@@ -388,11 +426,19 @@ describe("union type guards", () => {
     expect(isPipelineStatus("queued")).toBe(false);
   });
 
+  test("isPipelineStatus returns false for wrong type", () => {
+    expect(isPipelineStatus(null)).toBe(false);
+  });
+
   test("isCommandName returns true for submit", () => {
     expect(isCommandName("submit")).toBe(true);
   });
 
   test("isCommandName returns false for invalid value", () => {
     expect(isCommandName("deploy")).toBe(false);
+  });
+
+  test("isCommandName returns false for wrong type", () => {
+    expect(isCommandName({ command: "submit" })).toBe(false);
   });
 });
