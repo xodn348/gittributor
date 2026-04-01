@@ -158,4 +158,26 @@ describe("anthropic client wrapper", () => {
       }),
     ).rejects.toBeInstanceOf(AnthropicAPIError);
   });
+
+  it("treats 201 responses as AnthropicAPIError because only 200 is accepted", async () => {
+    spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_201",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: JSON.stringify(analysisFixture) }],
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(
+      analyzeCodeForIssue({
+        issue: issueFixture,
+        codeContext: "context",
+        apiKey: "test-key",
+      }),
+    ).rejects.toBeInstanceOf(AnthropicAPIError);
+  });
 });

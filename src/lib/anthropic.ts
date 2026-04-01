@@ -122,7 +122,7 @@ async function callAnthropic(options: {
     body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
+  if (response.status !== 200) {
     const message = await parseErrorMessage(response);
     if (response.status === 429) {
       throw new RateLimitError(message);
