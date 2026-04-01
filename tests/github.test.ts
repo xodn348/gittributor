@@ -154,6 +154,41 @@ describe("GitHubClient", () => {
     });
   });
 
+  it("searchIssues defaults to good first issue label when labels are empty", async () => {
+    spawnMock.mockReturnValue(
+      createMockProcess({
+        stdout: JSON.stringify([]),
+      }),
+    );
+
+    const client = new GitHubClient();
+    const result = await client.searchIssues("owner/repo", {
+      labels: [],
+      limit: 3,
+    });
+
+    expect(result).toEqual([]);
+    expect(spawnMock).toHaveBeenCalledWith({
+      cmd: [
+        "gh",
+        "search",
+        "issues",
+        "--repo",
+        "owner/repo",
+        "--label",
+        "good first issue",
+        "--state",
+        "open",
+        "--json",
+        "number,title,body,url,labels,createdAt,assignees",
+        "--limit",
+        "3",
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  });
+
   it("forkRepo returns fork URL from gh repo fork", async () => {
     spawnMock.mockReturnValue(
       createMockProcess({

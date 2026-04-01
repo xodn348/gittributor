@@ -77,7 +77,8 @@ export class GitHubClient {
     repoFullName: string,
     opts: { labels: string[]; limit: number },
   ): Promise<Issue[]> {
-    const labelArgs = opts.labels.flatMap((label) => ["--label", label]);
+    const labels = new Set(["good first issue", ...opts.labels]);
+    const labelArgs = [...labels].flatMap((label) => ["--label", label]);
     const stdout = await this.runCommand([
       "gh",
       "search",
