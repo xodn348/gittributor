@@ -189,10 +189,10 @@ describe("GitHubClient", () => {
     });
   });
 
-  it("forkRepo returns fork URL from gh repo fork", async () => {
+  it("forkRepo returns fork URL from gh repo fork output", async () => {
     spawnMock.mockReturnValue(
       createMockProcess({
-        stdout: JSON.stringify({ nameWithOwner: "fork-owner/repo" }),
+        stdout: "https://github.com/fork-owner/repo\n",
       }),
     );
 
@@ -201,15 +201,7 @@ describe("GitHubClient", () => {
 
     expect(result).toBe("https://github.com/fork-owner/repo");
     expect(spawnMock).toHaveBeenCalledWith({
-      cmd: [
-        "gh",
-        "repo",
-        "fork",
-        "owner/repo",
-        "--clone=false",
-        "--json",
-        "nameWithOwner",
-      ],
+      cmd: ["gh", "repo", "fork", "owner/repo", "--clone=false"],
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -255,10 +247,10 @@ describe("GitHubClient", () => {
     });
   });
 
-  it("createPR returns PR submission details", async () => {
+  it("createPR returns PR submission details from gh output URL", async () => {
     spawnMock.mockReturnValue(
       createMockProcess({
-        stdout: JSON.stringify({ number: 12, url: "https://github.com/upstream/repo/pull/12" }),
+        stdout: "https://github.com/upstream/repo/pull/12\n",
       }),
     );
 
@@ -288,8 +280,38 @@ describe("GitHubClient", () => {
         "Fix issue #42",
         "--body",
         "This fixes issue #42",
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  });
+
+  it("searchIssues always includes good first issue even with additional labels", async () => {
+    spawnMock.mockReturnValue(createMockProcess({ stdout: JSON.stringify([]) }));
+
+    const client = new GitHubClient();
+    await client.searchIssues("owner/repo", {
+      labels: ["bug"],
+      limit: 2,
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith({
+      cmd: [
+        "gh",
+        "search",
+        "issues",
+        "--repo",
+        "owner/repo",
+        "--label",
+        "good first issue",
+        "--label",
+        "bug",
+        "--state",
+        "open",
         "--json",
-        "number,url",
+        "number,title,body,url,labels,createdAt,assignees",
+        "--limit",
+        "2",
       ],
       stdout: "pipe",
       stderr: "pipe",

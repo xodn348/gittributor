@@ -20,14 +20,6 @@ interface IssueSearchResult {
   assignees: Array<{ login: string } | string>;
 }
 
-interface ForkResult {
-  nameWithOwner: string;
-}
-
-interface CreatePRResult {
-  number: number;
-  url: string;
-}
 export { GitHubAPIError };
 
 export class GitHubClient {
@@ -112,18 +104,8 @@ export class GitHubClient {
   }
 
   async forkRepo(repoFullName: string): Promise<string> {
-    const stdout = await this.runCommand([
-      "gh",
-      "repo",
-      "fork",
-      repoFullName,
-      "--clone=false",
-      "--json",
-      "nameWithOwner",
-    ]);
-
-    const data = this.parseJSON<ForkResult>(stdout, "forkRepo");
-    return `https://github.com/${data.nameWithOwner}`;
+    const stdout = await this.runCommand(["gh", "repo", "fork", repoFullName, "--clone=false"]);
+    return this.extractUrl(stdout, "forkRepo");
   }
 
   async createBranch(repoPath: string, branchName: string): Promise<void> {
@@ -154,17 +136,15 @@ export class GitHubClient {
       opts.title,
       "--body",
       opts.body,
-      "--json",
-      "number,url",
     ]);
-
-    const data = this.parseJSON<CreatePRResult>(stdout, "createPR");
+    const prUrl = this.extractUrl(stdout, "createPR");
+    const prNumber = this.extractPullRequestNumber(prUrl);
 
     return {
       issueId: 0,
       repoFullName: opts.upstreamRepo,
-      prUrl: data.url,
-      prNumber: data.number,
+      prUrl,
+      prNumber,
       branchName: opts.branchName,
       submittedAt: new Date().toISOString(),
     };
@@ -195,5 +175,28 @@ export class GitHubClient {
       const message = error instanceof Error ? error.message : "Unknown parse error";
       throw new GitHubAPIError(`${operation} returned invalid JSON: ${message}`);
     }
+  }
+
+  private extractUrl(payload: string, operation: string): string {
+    const urlMatch = payload.match(/https:\/\/github\.com\/\S+/);
+    if (!urlMatch) {
+      throw new GitHubAPIError(`${operation} did not return a GitHub URL.`);
+    }
+
+    return urlMatch[0].trim();
+  }
+
+  private extractPullRequestNumber(prUrl: string): number {
+    const match = prUrl.match(/\/pull\/(\d+)$/);
+    if (!match) {
+      throw new GitHubAPIError(`createPR returned unexpected PR URL format: ${prUrl}`);
+    }
+
+    const prNumber = Number.parseInt(match[1], 10);
+    if (!Number.isFinite(prNumber)) {
+      throw new GitHubAPIError(`createPR returned invalid PR number in URL: ${prUrl}`);
+    }
+
+    return prNumber;
   }
 }
