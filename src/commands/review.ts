@@ -132,8 +132,8 @@ const writeFixSummary = (payload: FixReviewPayload, io: ReviewCommandIO): void =
     io.stdout.write("\n");
   }
 
-  io.stdout.write(`AI Explanation: ${payload.explanation || "(none provided)"}\n`);
-  io.stdout.write(`Confidence: ${payload.confidence}\n\n`);
+  io.stdout.write(`AI explanation: ${payload.explanation || "(none provided)"}\n`);
+  io.stdout.write(`Confidence score: ${payload.confidence}\n\n`);
 };
 
 const loadFixPayload = async (): Promise<FixReviewPayload> => {

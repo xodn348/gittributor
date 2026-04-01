@@ -184,9 +184,9 @@ describe("reviewFixes", () => {
     expect(stdout.text).toContain("Issue: Parser drops trailing commas");
     expect(stdout.text).toContain("Description: Repro in src/parser.ts when parsing trailing commas.");
     expect(stdout.text).toContain(
-      "AI Explanation: Adjusted parsing branch to preserve optional separator handling.",
+      "AI explanation: Adjusted parsing branch to preserve optional separator handling.",
     );
-    expect(stdout.text).toContain("Confidence: 0.87");
+    expect(stdout.text).toContain("Confidence score: 0.87");
     expect(stdout.text).toContain("\x1b[31m-const hasComma = false;\x1b[0m");
     expect(stdout.text).toContain("\x1b[32m+const hasComma = true;\x1b[0m");
   });
