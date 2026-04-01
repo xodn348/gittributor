@@ -94,6 +94,20 @@ describe("submit command", () => {
       join(tempDir, ".gittributor", "state.json"),
       JSON.stringify(createReviewedState("approved"), null, 2),
     );
+    await Bun.write(
+      join(tempDir, ".gittributor", "fix.json"),
+      JSON.stringify({
+        changes: [
+          {
+            file: "src/parser.ts",
+            original: "",
+            modified: "export const parse = (value: string) => value.trim();\n",
+          },
+        ],
+        explanation: "Normalize whitespace parsing for empty input.",
+        confidence: 0.91,
+      }),
+    );
   });
 
   afterEach(() => {
@@ -148,15 +162,55 @@ describe("submit command", () => {
       "origin",
       "gittributor/fix-17",
     ]);
-    expect(commands[6]?.slice(0, 6)).toEqual(["gh", "pr", "create", "--repo", "octocat/hello-world", "--title"]);
+    expect(commands[4]).toEqual([
+      "git",
+      "-C",
+      ".gittributor/workspace/hello-world",
+      "commit",
+      "-m",
+      "fix(#17): Fix flaky parser trim path",
+      "-m",
+      "This fix was generated with AI assistance (Anthropic Claude) and reviewed by a human.",
+    ]);
+    expect(commands[6]).toEqual([
+      "gh",
+      "pr",
+      "create",
+      "--repo",
+      "octocat/hello-world",
+      "--head",
+      "test-user:gittributor/fix-17",
+      "--title",
+      "fix(#17): Fix flaky parser trim path",
+      "--body",
+      [
+        "Fixes #17",
+        "",
+        "This fix was generated with AI assistance (Anthropic Claude) and reviewed by a human.",
+        "",
+        "## Summary of changes",
+        "- `src/parser.ts`",
+        "",
+        "## Why",
+        "Normalize whitespace parsing for empty input.",
+      ].join("\n"),
+    ]);
 
     const persisted = JSON.parse(readFileSync(join(tempDir, ".gittributor", "state.json"), "utf8")) as {
       status: string;
-      data?: { submission?: { prUrl?: string } };
+      submissions?: Array<{ prUrl?: string; branchName?: string }>;
+      data?: { submission?: { prUrl?: string; branchName?: string } };
     };
 
     expect(persisted.status).toBe("submitted");
     expect(persisted.data?.submission?.prUrl).toBe("https://github.com/octocat/hello-world/pull/42");
+    expect(persisted.data?.submission?.branchName).toBe("gittributor/fix-17");
+    expect(persisted.submissions).toEqual([
+      expect.objectContaining({
+        prUrl: "https://github.com/octocat/hello-world/pull/42",
+        branchName: "gittributor/fix-17",
+      }),
+    ]);
     expect(Bun.file(join(tempDir, ".gittributor", "workspace", "hello-world")).exists()).resolves.toBe(
       false,
     );

@@ -1,7 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { loadState, saveState, transition } from "../lib/state";
-import type { FixResult, PipelineState, PipelineStatus } from "../types";
+import { loadState, saveState, transition, getStateData } from "../lib/state";
+import type { FixResult, PRSubmission, PipelineState, PipelineStatus } from "../types";
 
 const WORKSPACE_ROOT = ".gittributor/workspace";
 const AI_DISCLOSURE =
@@ -32,6 +32,15 @@ interface SubmissionStateData {
   review?: ReviewStateData;
 }
 
+interface PersistedFixPayload {
+  changes: FixChange[];
+  explanation: string;
+}
+
+interface PipelineStateWithData extends PipelineState {
+  data?: Record<string, unknown>;
+}
+
 const extractGitHubUrl = (payload: string, operation: string): string => {
   const urlMatch = payload.match(/https:\/\/github\.com\/\S+/);
   if (!urlMatch) {
@@ -48,6 +57,15 @@ const extractPRNumber = (prUrl: string): number => {
   }
 
   return Number.parseInt(match[1], 10);
+};
+
+const extractRepoOwner = (repoUrl: string): string => {
+  const match = repoUrl.match(/^https:\/\/github\.com\/([^/]+)\/[^/\s]+\/?$/);
+  if (!match) {
+    throw new Error(`Unexpected fork URL format: ${repoUrl}`);
+  }
+
+  return match[1];
 };
 
 const shortDescription = (text: string): string => {
@@ -74,18 +92,73 @@ const runCommand = async (cmd: string[]): Promise<string> => {
   return stdout;
 };
 
-const getStateData = (state: PipelineState): SubmissionStateData => {
-  const candidate = (state as unknown as { data?: unknown }).data;
-  if (!candidate || typeof candidate !== "object") {
-    return {};
+const loadPersistedFixPayload = async (): Promise<PersistedFixPayload> => {
+  const filePath = join(process.cwd(), ".gittributor", "fix.json");
+  const payload = await Bun.file(filePath).json();
+
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("Cannot submit: persisted fix payload is invalid");
   }
 
-  return candidate as SubmissionStateData;
+  const record = payload as Record<string, unknown>;
+  const changes = Array.isArray(record.changes)
+    ? record.changes
+        .map((entry) => {
+          if (typeof entry !== "object" || entry === null) {
+            return null;
+          }
+
+          const change = entry as Record<string, unknown>;
+          if (
+            typeof change.file !== "string" ||
+            typeof change.original !== "string" ||
+            typeof change.modified !== "string"
+          ) {
+            return null;
+          }
+
+          return {
+            file: change.file,
+            original: change.original,
+            modified: change.modified,
+          };
+        })
+        .filter((entry): entry is FixChange => entry !== null)
+    : [];
+
+  return {
+    changes,
+    explanation: typeof record.explanation === "string" ? record.explanation : "",
+  };
 };
 
-const selectIssueId = (state: PipelineState, data: SubmissionStateData): number => {
+const selectIssueId = (
+  state: PipelineState,
+  reviewState: ReviewStateData | null,
+  fixPayload: PersistedFixPayload,
+): number => {
+  const data = {
+    review: reviewState ?? undefined,
+  } satisfies SubmissionStateData;
+
   if (typeof data.review?.issueId === "number") {
     return data.review.issueId;
+  }
+
+  const currentIssue = state.issues[0];
+  if (currentIssue && state.fixes[currentIssue.id] && currentIssue.repoFullName) {
+    return currentIssue.id;
+  }
+
+  const matchingFixIds = Object.entries(state.fixes)
+    .filter(([, fix]) => {
+      return fix.explanation === fixPayload.explanation && fix.repoFullName === currentIssue?.repoFullName;
+    })
+    .map(([issueId]) => Number.parseInt(issueId, 10))
+    .filter((issueId) => Number.isFinite(issueId));
+
+  if (matchingFixIds.length === 1) {
+    return matchingFixIds[0];
   }
 
   const fixIssueIds = Object.keys(state.fixes)
@@ -106,6 +179,22 @@ const ensureApprovedReview = (state: PipelineState, data: SubmissionStateData): 
   }
 };
 
+const buildSubmissionRecord = (
+  issueId: number,
+  repoFullName: string,
+  prUrl: string,
+  branchName: string,
+): PRSubmission => {
+  return {
+    issueId,
+    repoFullName,
+    prUrl,
+    prNumber: extractPRNumber(prUrl),
+    branchName,
+    submittedAt: new Date().toISOString(),
+  };
+};
+
 const createPRBody = (issueNumber: number, fix: FixResultWithChanges): string => {
   const changedFiles = fix.changes.map((change) => `- \`${change.file}\``).join("\n");
   const summary = shortDescription(fix.explanation);
@@ -123,15 +212,29 @@ const createPRBody = (issueNumber: number, fix: FixResultWithChanges): string =>
   ].join("\n");
 };
 
+const extractStateDataRecord = (state: PipelineState): Record<string, unknown> => {
+  const candidate = (state as PipelineStateWithData).data;
+  if (!candidate || typeof candidate !== "object") {
+    return {};
+  }
+
+  return candidate;
+};
+
 const appendSubmissionData = (
   state: PipelineState,
   patch: SubmissionStateData["submission"],
 ): Record<string, unknown> => {
-  const existingData = getStateData(state);
+  const existingData = extractStateDataRecord(state);
+  const existingSubmission =
+    typeof existingData.submission === "object" && existingData.submission !== null
+      ? (existingData.submission as Record<string, unknown>)
+      : {};
+
   return {
     ...existingData,
     submission: {
-      ...existingData.submission,
+      ...existingSubmission,
       ...patch,
     },
   };
@@ -141,10 +244,12 @@ const updateState = async (
   state: PipelineState,
   status: PipelineStatus | "submit_failed",
   submissionPatch: SubmissionStateData["submission"],
+  submissionRecord?: PRSubmission,
 ): Promise<void> => {
   const nextState = {
     ...state,
     status,
+    submissions: submissionRecord ? [...state.submissions, submissionRecord] : state.submissions,
     data: appendSubmissionData(state, submissionPatch),
   };
 
@@ -161,12 +266,17 @@ const applyFixChanges = async (workspacePath: string, fix: FixResultWithChanges)
 
 export const submitApprovedFix = async (): Promise<number> => {
   const state = await loadState();
-  const stateData = getStateData(state);
+  const reviewState = getStateData<ReviewStateData>("review");
+  const stateData: SubmissionStateData = {
+    review: reviewState ?? undefined,
+  };
 
   try {
     ensureApprovedReview(state, stateData);
 
-    const issueId = selectIssueId(state, stateData);
+    const fixPayload = await loadPersistedFixPayload();
+
+    const issueId = selectIssueId(state, reviewState, fixPayload);
     const issue = state.issues.find((entry) => entry.id === issueId || entry.number === issueId);
     if (!issue) {
       throw new Error(`Cannot submit: issue ${issueId} not found in pipeline state`);
@@ -177,7 +287,10 @@ export const submitApprovedFix = async (): Promise<number> => {
       throw new Error(`Cannot submit: fix for issue ${issueId} not found`);
     }
 
-    const fix = rawFix as unknown as FixResultWithChanges;
+    const fix: FixResultWithChanges = {
+      ...(rawFix as FixResult),
+      changes: fixPayload.changes,
+    };
     if (!Array.isArray(fix.changes) || fix.changes.length === 0) {
       throw new Error("Cannot submit: fix has no file changes");
     }
@@ -193,6 +306,7 @@ export const submitApprovedFix = async (): Promise<number> => {
 
     const forkOutput = await runCommand(["gh", "repo", "fork", repoFullName, "--clone=false"]);
     const forkUrl = extractGitHubUrl(forkOutput, "gh repo fork");
+    const forkOwner = extractRepoOwner(forkUrl);
 
     await runCommand(["git", "clone", "--depth=1", forkUrl, workspacePath]);
     await runCommand(["git", "-C", workspacePath, "checkout", "-b", branchName]);
@@ -212,18 +326,21 @@ export const submitApprovedFix = async (): Promise<number> => {
       "create",
       "--repo",
       repoFullName,
+      "--head",
+      `${forkOwner}:${branchName}`,
       "--title",
       prTitle,
       "--body",
       prBody,
     ]);
     const prUrl = extractGitHubUrl(prOutput, "gh pr create");
+    const submissionRecord = buildSubmissionRecord(issueId, repoFullName, prUrl, branchName);
 
     await updateState(state, transition(state.status, "submitted"), {
       prUrl,
-      prNumber: extractPRNumber(prUrl),
+      prNumber: submissionRecord.prNumber,
       branchName,
-    });
+    }, submissionRecord);
 
     await rm(join(WORKSPACE_ROOT), { recursive: true, force: true });
     return 0;
