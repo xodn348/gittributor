@@ -53,24 +53,28 @@ describe("logger", () => {
     info("connected");
 
     expect(stdoutChunks.join("")).toBe("\x1b[36m\x1b[1m[INFO]\x1b[0m connected\n");
+    expect(stderrChunks.join("")).toBe("");
   });
 
   it("warn writes yellow WARN prefix to stderr", () => {
     warn("slow response");
 
     expect(stderrChunks.join("")).toBe("\x1b[33m\x1b[1m[WARN]\x1b[0m slow response\n");
+    expect(stdoutChunks.join("")).toBe("");
   });
 
   it("error writes red ERROR prefix to stderr", () => {
     error("request failed");
 
     expect(stderrChunks.join("")).toBe("\x1b[31m\x1b[1m[ERROR]\x1b[0m request failed\n");
+    expect(stdoutChunks.join("")).toBe("");
   });
 
   it("success writes green check prefix to stdout", () => {
     success("done");
 
     expect(stdoutChunks.join("")).toBe("\x1b[32m\x1b[1m[✓]\x1b[0m done\n");
+    expect(stderrChunks.join("")).toBe("");
   });
 
   it("debug does not write when VERBOSE is not true", () => {
@@ -88,5 +92,6 @@ describe("logger", () => {
     debug("trace");
 
     expect(stdoutChunks.join("")).toBe("\x1b[36m\x1b[1m[DEBUG]\x1b[0m trace\n");
+    expect(stderrChunks.join("")).toBe("");
   });
 });
