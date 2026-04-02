@@ -250,11 +250,48 @@ describe("analyzeCodebase", () => {
       complexity: anthropicResponseFixture.complexity,
     });
     expect(result.relevantFiles).toEqual(anthropicResponseFixture.affectedFiles);
+    expect(result.fileContents).toMatchObject({
+      "src/parser.ts": "export const parser = true;\n",
+      "src/api/client.ts": "export const client = true;\n",
+    });
     expect(Number.isNaN(Date.parse(result.analyzedAt))).toBe(false);
 
     expect(existsSync(persistedAnalysisPath)).toBe(true);
     expect(JSON.parse(readFileSync(persistedAnalysisPath, "utf8"))).toEqual(result);
     expect(existsSync(cloneTarget)).toBe(false);
+  });
+
+  it("omits fileContents from persisted analysis when they would exceed 50KB", async () => {
+    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async () => {
+      return JSON.stringify({
+        ...anthropicResponseFixture,
+        affectedFiles: ["src/parser.ts"],
+      });
+    });
+
+    const oversizedFileContents = Array.from({ length: 500 }, (_, index) => `${index}: ${"x".repeat(180)}`).join(
+      "\n",
+    );
+
+    spawnMock
+      .mockReturnValueOnce(createMockProcess({ stdout: JSON.stringify({ diskUsage: 1000 }) }))
+      .mockImplementationOnce((spawnArg: unknown) => {
+        const cloneTarget =
+          typeof spawnArg === "object" && spawnArg !== null && "cmd" in spawnArg
+            ? ((spawnArg as { cmd: string[] }).cmd[4] ?? "")
+            : "";
+
+        mkdirSync(path.join(cloneTarget, "src"), { recursive: true });
+        writeFileSync(path.join(cloneTarget, "src", "parser.ts"), oversizedFileContents);
+        return createMockProcess({});
+      });
+
+    const result = await analyzeCodebase(repositoryFixture, issueFixture);
+    const persisted = JSON.parse(readFileSync(path.join(process.cwd(), ".gittributor", "analysis.json"), "utf8"));
+
+    expect(Object.keys(result.fileContents ?? {})).toContain("src/parser.ts");
+    expect(typeof result.fileContents?.["src/parser.ts"]).toBe("string");
+    expect(persisted.fileContents).toBeUndefined();
   });
 
   it("truncates analyzed files to 500 lines and appends the truncation marker", async () => {

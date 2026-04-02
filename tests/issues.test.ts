@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { GitHubClient } from "../src/lib/github";
 import type { Issue, Repository } from "../src/types";
 
-const { discoverIssues } = await import("../src/commands/analyze");
+const { buildIssueProposalTable, discoverIssues } = await import("../src/commands/analyze");
 
 const repoFixture: Repository = {
   id: 1,
@@ -34,6 +34,8 @@ function makeIssue(overrides: Partial<Issue & { updatedAt: string }>): Issue {
     labels: overrides.labels ?? ["good first issue"],
     createdAt: overrides.createdAt ?? "2026-03-25T00:00:00.000Z",
     assignees: overrides.assignees ?? [],
+    reactions: overrides.reactions,
+    commentsCount: overrides.commentsCount,
     ...(overrides.updatedAt ? { updatedAt: overrides.updatedAt } : {}),
   } as Issue;
 }
@@ -46,6 +48,7 @@ describe("discoverIssues", () => {
   beforeEach(async () => {
     Date.now = () => now.getTime();
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([]);
+    spyOn(GitHubClient.prototype, "getFileTree").mockResolvedValue([]);
     tempDir = await mkdtemp(join(tmpdir(), "gittributor-issues-"));
     process.chdir(tempDir);
   });
@@ -108,6 +111,56 @@ describe("discoverIssues", () => {
     );
   });
 
+  it("adds impact and codebase scores when reactions, comments, and file tree matches exist", async () => {
+    spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
+      makeIssue({
+        id: 20,
+        number: 20,
+        title: "Auth bug in auth service",
+        body: "Steps to reproduce are in src/auth/service.ts. Check the src/auth directory when login fails.",
+        labels: ["good first issue", "bug"],
+        reactions: 11,
+        commentsCount: 6,
+        updatedAt: "2026-03-30T00:00:00.000Z",
+      }),
+    ]);
+    spyOn(GitHubClient.prototype, "getFileTree").mockResolvedValue([
+      "src/auth/service.ts",
+      "src/auth/index.ts",
+      "src/parser.ts",
+    ]);
+
+    const issues = await discoverIssues(repoFixture);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      impactScore: 5,
+      codebaseScore: 6,
+    });
+    expect(issues[0]?.totalScore).toBe(
+      issues[0]!.approachabilityScore + issues[0]!.impactScore + issues[0]!.codebaseScore,
+    );
+  });
+
+  it("gracefully skips codebase scoring when file tree lookup fails", async () => {
+    spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
+      makeIssue({
+        id: 21,
+        number: 21,
+        title: "Auth issue",
+        body: "Please check auth flow with clear reproduction steps in src/auth/service.ts.",
+        reactions: 3,
+        updatedAt: "2026-03-30T00:00:00.000Z",
+      }),
+    ]);
+    spyOn(GitHubClient.prototype, "getFileTree").mockResolvedValue([]);
+
+    const issues = await discoverIssues(repoFixture);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.codebaseScore).toBe(0);
+  });
+
   it("returns empty array when no issues pass filters", async () => {
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
       makeIssue({ id: 1, number: 1, assignees: ["alice"] }),
@@ -139,11 +192,44 @@ describe("discoverIssues", () => {
     const issues = await discoverIssues(repoFixture);
     const filePath = join(tempDir, ".gittributor", "issues.json");
     const fileContents = await readFile(filePath, "utf8");
-    const parsed = JSON.parse(fileContents) as Array<Issue & { approachabilityScore: number }>;
+    const parsed = JSON.parse(fileContents) as Array<
+      Issue & { approachabilityScore: number; impactScore: number; codebaseScore: number; totalScore: number }
+    >;
 
     expect(issues).toHaveLength(1);
     expect(parsed).toHaveLength(1);
     expect(parsed[0]?.number).toBe(99);
     expect(parsed[0]?.approachabilityScore).toBeGreaterThanOrEqual(0);
+    expect(parsed[0]?.impactScore).toBeGreaterThanOrEqual(0);
+    expect(parsed[0]?.codebaseScore).toBeGreaterThanOrEqual(0);
+  });
+
+  it("builds a ranked issue proposal table for the top five issues", () => {
+    const table = buildIssueProposalTable(repoFixture, [
+      {
+        ...makeIssue({
+          id: 1,
+          number: 101,
+          title: "Top issue",
+          reactions: 8,
+        }),
+        approachabilityScore: 5,
+        impactScore: 3,
+        codebaseScore: 2,
+        totalScore: 10,
+      },
+      {
+        ...makeIssue({ id: 2, number: 102, title: "Second issue", reactions: 2 }),
+        approachabilityScore: 4,
+        impactScore: 2,
+        codebaseScore: 1,
+        totalScore: 7,
+      },
+    ]);
+
+    expect(table).toContain("TOP 5 FIXABLE ISSUES for owner/repo");
+    expect(table).toContain("[1] #101  Top issue   (score: 10)");
+    expect(table).toContain("Complexity: low | 👍 8 reactions");
+    expect(table).toContain("Run 'gittributor fix' to fix issue #101");
   });
 });

@@ -1,2 +1,4 @@
 - 2026-04-01: Switched the analyzer from the older `analyzeCodeForIssue` helper to a direct `callAnthropic` flow so the module can enforce the task-specific system prompt and structured JSON fields (`rootCause`, `affectedFiles`, `complexity`).
 - 2026-04-01: Persist large-repo skip results to `.gittributor/analysis.json` too, so every analyzer run leaves a machine-readable outcome instead of silently returning early.
+- 2026-04-01: Keep `AnalysisResult.fileContents` in memory for all selected files so `fix` has real code context, but strip that field from persisted `analysis.json` whenever the serialized payload would exceed 50KB.
+- 2026-04-01: Rank analyzed issues with three deterministic components—approachability, impact, and file-tree codebase matching—so `analyze` stays fully local and token-free while still surfacing repo-aware candidates.

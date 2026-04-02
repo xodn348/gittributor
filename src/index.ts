@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 
-import { discoverIssues } from "./commands/analyze";
+import { discoverIssues, printIssueProposalTable } from "./commands/analyze";
 import { CLIArgumentError, parseArgs } from "./commands/cli";
 import { discoverRepos } from "./commands/discover";
 import { reviewFix } from "./commands/review";
 import { submitApprovedFix } from "./commands/submit";
-import { analyzeCodebase } from "./lib/analyzer";
+import { analyzeCodebase, sanitizeAnalysisForPersistence } from "./lib/analyzer";
 import { ConfigError, loadConfig } from "./lib/config";
 import { generateFix } from "./lib/fix-generator";
 import { error as logError } from "./lib/logger";
@@ -323,6 +323,26 @@ const findRepositoryByIssue = (repositories: Repository[], issue: Issue): Reposi
   return matchingRepository;
 };
 
+const shouldRefreshAnalysisResult = (analysis: AnalysisResult | undefined): boolean => {
+  if (!analysis) {
+    return true;
+  }
+
+  return analysis.relevantFiles.length > 0 && !analysis.fileContents;
+};
+
+const isSkippedAnalysisResult = (analysis: AnalysisResult): boolean => {
+  return analysis.rootCause === "repo too large to analyze" || analysis.relevantFiles.length === 0;
+};
+
+const sanitizeAnalysesForState = (
+  analyses: Record<number, AnalysisResult>,
+): Record<number, AnalysisResult> => {
+  return Object.fromEntries(
+    Object.entries(analyses).map(([issueId, analysis]) => [issueId, sanitizeAnalysisForPersistence(analysis)]),
+  );
+};
+
 const buildPersistedFixResult = (
   analysisResult: AnalysisResult,
   issue: Issue,
@@ -367,6 +387,8 @@ const runAnalyzeCommand = async (): Promise<number> => {
   const selectedRepository = selectRepositoryForAnalysis(currentState.repositories);
   const discoveredIssuesForRepository = await discoverIssues(selectedRepository);
 
+  printIssueProposalTable(selectedRepository, discoveredIssuesForRepository);
+
   await saveState({
     ...currentState,
     status: "analyzed",
@@ -380,17 +402,28 @@ const runFixCommand = async (): Promise<number> => {
   const currentState = await loadState();
   const selectedIssue = selectIssueForFix(currentState.issues);
   const selectedRepository = findRepositoryByIssue(currentState.repositories, selectedIssue);
-  const analysisResult = currentState.analyses[selectedIssue.id] ?? await analyzeCodebase(selectedRepository, selectedIssue);
+  const cachedAnalysis = currentState.analyses[selectedIssue.id];
+  const analysisResult = shouldRefreshAnalysisResult(cachedAnalysis)
+    ? await analyzeCodebase(selectedRepository, selectedIssue)
+    : cachedAnalysis;
+
+  if (isSkippedAnalysisResult(analysisResult)) {
+    throw new CLIEntrypointError(
+      `Cannot generate a fix for ${selectedRepository.fullName}: automated analysis was skipped because the repository is too large.`,
+    );
+  }
+
   const generatedFix = await generateFix(analysisResult, selectedIssue, selectedRepository);
   const persistedFix = buildPersistedFixResult(analysisResult, selectedIssue, generatedFix);
+  const nextAnalyses = sanitizeAnalysesForState({
+    ...currentState.analyses,
+    [selectedIssue.id]: analysisResult,
+  });
 
   await saveState({
     ...currentState,
     status: "fixed",
-    analyses: {
-      ...currentState.analyses,
-      [selectedIssue.id]: analysisResult,
-    },
+    analyses: nextAnalyses,
     fixes: {
       ...currentState.fixes,
       [selectedIssue.id]: persistedFix,

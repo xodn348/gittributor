@@ -100,21 +100,29 @@ describe("GitHubClient", () => {
   });
 
   it("searchIssues uses gh search issues with labels and maps fields", async () => {
-    spawnMock.mockReturnValue(
-      createMockProcess({
-        stdout: JSON.stringify([
-          {
-            number: 42,
-            title: "Fix typing issue",
-            body: "Details",
-            url: "https://github.com/owner/repo/issues/42",
+    spawnMock
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify([
+            {
+              number: 42,
+              title: "Fix typing issue",
+              body: "Details",
+              url: "https://github.com/owner/repo/issues/42",
             labels: [{ name: "good first issue" }, { name: "bug" }],
             createdAt: "2026-03-31T00:00:00Z",
+            updatedAt: "2026-04-01T00:00:00Z",
+            commentsCount: 4,
             assignees: [{ login: "alice" }, { login: "bob" }],
           },
-        ]),
-      }),
-    );
+          ]),
+        }),
+      )
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify({ reactions: { total_count: 7 } }),
+        }),
+      );
 
     const client = new GitHubClient();
     const result = await client.searchIssues("owner/repo", {
@@ -128,10 +136,13 @@ describe("GitHubClient", () => {
       title: "Fix typing issue",
       repoFullName: "owner/repo",
       labels: ["good first issue", "bug"],
+      updatedAt: "2026-04-01T00:00:00Z",
       assignees: ["alice", "bob"],
+      reactions: 7,
+      commentsCount: 4,
     });
 
-    expect(spawnMock).toHaveBeenCalledWith({
+    expect(spawnMock).toHaveBeenNthCalledWith(1, {
       cmd: [
         "gh",
         "search",
@@ -145,10 +156,15 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,assignees",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "5",
       ],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(spawnMock).toHaveBeenNthCalledWith(2, {
+      cmd: ["gh", "api", "repos/owner/repo/issues/42"],
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -180,7 +196,7 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,assignees",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "3",
       ],
@@ -309,12 +325,50 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,assignees",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "2",
       ],
       stdout: "pipe",
       stderr: "pipe",
+    });
+  });
+
+  it("searchIssues falls back to comments-only metrics when issue detail lookup fails", async () => {
+    spawnMock
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify([
+            {
+              number: 7,
+              title: "Need auth fix",
+              body: "Details",
+              url: "https://github.com/owner/repo/issues/7",
+              labels: [{ name: "bug" }],
+              createdAt: "2026-03-31T00:00:00Z",
+              commentsCount: 3,
+              assignees: [],
+            },
+          ]),
+        }),
+      )
+      .mockReturnValueOnce(
+        createMockProcess({
+          stderr: "boom",
+          exitCode: 1,
+        }),
+      );
+
+    const client = new GitHubClient();
+    const result = await client.searchIssues("owner/repo", {
+      labels: ["bug"],
+      limit: 1,
+    });
+
+    expect(result[0]).toMatchObject({
+      number: 7,
+      commentsCount: 3,
+      reactions: 0,
     });
   });
 
@@ -331,5 +385,42 @@ describe("GitHubClient", () => {
     return expect(
       client.searchRepositories({ minStars: 100, languages: ["TypeScript"], limit: 5 }),
     ).rejects.toBeInstanceOf(GitHubAPIError);
+  });
+
+  it("getFileTree returns blob paths from the Git trees API", async () => {
+    spawnMock.mockReturnValue(
+      createMockProcess({
+        stdout: JSON.stringify({
+          tree: [
+            { path: "src", type: "tree" },
+            { path: "src/index.ts", type: "blob" },
+            { path: "README.md", type: "blob" },
+          ],
+        }),
+      }),
+    );
+
+    const client = new GitHubClient();
+    const result = await client.getFileTree("owner/repo");
+
+    expect(result).toEqual(["src/index.ts", "README.md"]);
+    expect(spawnMock).toHaveBeenCalledWith({
+      cmd: ["gh", "api", "repos/owner/repo/git/trees/HEAD?recursive=1"],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  });
+
+  it("getFileTree returns an empty array when gh api fails", async () => {
+    spawnMock.mockReturnValue(
+      createMockProcess({
+        stderr: "not found",
+        exitCode: 1,
+      }),
+    );
+
+    const client = new GitHubClient();
+
+    expect(client.getFileTree("owner/repo")).resolves.toEqual([]);
   });
 });

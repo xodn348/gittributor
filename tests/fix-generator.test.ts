@@ -66,9 +66,16 @@ const analysisFixture: AnalysisResult = {
   issueId: 301,
   repoFullName: "acme/demo",
   relevantFiles: ["src/parser.ts", "src/api/client.ts"],
+  rootCause: "Parser assumes payloads are always present.",
+  affectedFiles: ["src/parser.ts", "src/api/client.ts"],
+  complexity: "medium",
   suggestedApproach: "Add a null guard before parse flow and preserve existing behavior.",
   confidence: 0.84,
   analyzedAt: "2026-04-01T00:05:00.000Z",
+  fileContents: {
+    "src/parser.ts": "export function parse(payload: unknown) {\n  return payload as object;\n}",
+    "src/api/client.ts": "export const toPayload = (value: unknown) => ({ value });",
+  },
 };
 
 let fixGeneratorModuleLoadCounter = 0;
@@ -154,8 +161,14 @@ describe("fix-generator", () => {
     expect(capturedPrompt).toContain(repoFixture.fullName);
     expect(capturedPrompt).toContain(repoFixture.description as string);
     expect(capturedPrompt).toContain(String(analysisFixture.confidence));
+    expect(capturedPrompt).toContain(analysisFixture.rootCause as string);
+    expect(capturedPrompt).toContain((analysisFixture.affectedFiles ?? []).join(", "));
+    expect(capturedPrompt).toContain(analysisFixture.complexity as string);
     expect(capturedPrompt).toContain("src/parser.ts");
     expect(capturedPrompt).toContain("src/api/client.ts");
+    expect(capturedPrompt).toContain("<relevant-file-contents>");
+    expect(capturedPrompt).toContain("<file path=\"src/parser.ts\">");
+    expect(capturedPrompt).toContain("export function parse(payload: unknown)");
 
     const fixPath = path.join(process.cwd(), ".gittributor", "fix.json");
     expect(existsSync(fixPath)).toBe(true);
@@ -290,5 +303,40 @@ describe("fix-generator", () => {
       expect(error).toBeInstanceOf(SharedFixValidationError);
       expect((error as SharedFixValidationError).message).toContain("malformed");
     }
+  });
+
+  it("truncates file content snippets to 150 lines before adding them to the prompt", async () => {
+    const longContent = Array.from({ length: 180 }, (_, index) => `line ${index}`).join("\n");
+    let capturedPrompt = "";
+
+    const { generateFix } = await loadFixGeneratorWithAnthropicMock(async (options) => {
+      capturedPrompt = options.prompt;
+      return JSON.stringify({
+        changes: [
+          {
+            file: "src/parser.ts",
+            original: "before",
+            modified: "after",
+          },
+        ],
+        explanation: "Use truncated context.",
+        confidence: 0.7,
+      });
+    });
+
+    await generateFix(
+      {
+        ...analysisFixture,
+        fileContents: {
+          "src/parser.ts": longContent,
+        },
+      },
+      issueFixture,
+      repoFixture,
+    );
+
+    expect(capturedPrompt).toContain("line 149");
+    expect(capturedPrompt).not.toContain("line 150");
+    expect(capturedPrompt).toContain("truncated at 150 lines");
   });
 });

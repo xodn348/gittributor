@@ -6,14 +6,6 @@ import { GitHubAPIError, GittributorError } from "./errors";
 import { warn } from "./logger";
 import type { AnalysisResult, Issue, Repository } from "../types/index";
 
-declare module "../types/index" {
-  interface AnalysisResult {
-    rootCause?: string;
-    affectedFiles?: string[];
-    complexity?: "low" | "medium" | "high";
-  }
-}
-
 interface ParsedAnalysisPayload {
   rootCause: string;
   affectedFiles: string[];
@@ -36,6 +28,7 @@ class AnalyzerError extends GittributorError {
 const MAX_ANALYZED_FILES = 5;
 const MAX_LINES_PER_FILE = 500;
 const MAX_REPO_SIZE_KB = 102400;
+const MAX_PERSISTED_FILE_CONTENT_BYTES = 50 * 1024;
 const ANALYZER_MAX_TOKENS = 1024;
 const SUPPORTED_SOURCE_EXTENSION_PATTERN =
   /\.(ts|tsx|js|jsx|mjs|cjs|py|go|java|rb|rs|c|cpp|cs|php|swift|kt)$/;
@@ -59,6 +52,18 @@ function createLargeRepoResult(repo: Repository, issue: Issue): AnalysisResult {
     rootCause: "repo too large to analyze",
     affectedFiles: [],
     complexity: "high",
+  };
+}
+
+export function sanitizeAnalysisForPersistence(analysis: AnalysisResult): AnalysisResult {
+  const payloadWithContents = JSON.stringify(analysis, null, 2);
+  if (!analysis.fileContents || Buffer.byteLength(payloadWithContents, "utf8") <= MAX_PERSISTED_FILE_CONTENT_BYTES) {
+    return analysis;
+  }
+
+  return {
+    ...analysis,
+    fileContents: undefined,
   };
 }
 
@@ -250,7 +255,10 @@ function normalizeRelevantFiles(selectedFiles: string[], affectedFiles: string[]
 async function persistAnalysisResult(analysis: AnalysisResult): Promise<void> {
   const outputDirectory = path.join(process.cwd(), ".gittributor");
   mkdirSync(outputDirectory, { recursive: true });
-  await Bun.write(path.join(outputDirectory, "analysis.json"), JSON.stringify(analysis, null, 2));
+  await Bun.write(
+    path.join(outputDirectory, "analysis.json"),
+    JSON.stringify(sanitizeAnalysisForPersistence(analysis), null, 2),
+  );
 }
 
 async function requestAnalysis(
@@ -260,6 +268,12 @@ async function requestAnalysis(
   selectedFiles: string[],
 ): Promise<AnalysisResult> {
   const prompt = buildAnalysisPrompt(repo, issue, repoPath, selectedFiles);
+  const fileContents = Object.fromEntries(
+    selectedFiles.map((relativeFilePath) => [
+      relativeFilePath,
+      truncateFileByLines(path.join(repoPath, relativeFilePath)),
+    ]),
+  );
   const responseText = await callAnthropic({
     apiKey: Bun.env.ANTHROPIC_API_KEY ?? "",
     system: ANALYZER_SYSTEM_PROMPT,
@@ -279,9 +293,7 @@ async function requestAnalysis(
     rootCause: parsedAnalysis.rootCause,
     affectedFiles: normalizedRelevantFiles,
     complexity: parsedAnalysis.complexity,
-    fileContents: Object.fromEntries(
-      normalizedRelevantFiles.map((f) => [f, truncateFileByLines(path.join(repoPath, f))])
-    ),
+    fileContents,
   };
 }
 

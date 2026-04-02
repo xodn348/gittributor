@@ -31,6 +31,7 @@ interface ParsedFixPayload {
 
 const MAX_FIX_TOKENS = 2048;
 const DEFAULT_CONFIDENCE = 0.5;
+const MAX_PROMPT_FILE_LINES = 150;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -123,14 +124,32 @@ function buildSystemPrompt(): string {
   ].join(" ");
 }
 
-function buildFileContentsSection(fileContents: Record<string, string> | undefined): string {
-  if (!fileContents || Object.keys(fileContents).length === 0) {
+function truncatePromptSnippet(content: string): string {
+  const lines = content.split("\n");
+
+  if (lines.length <= MAX_PROMPT_FILE_LINES) {
+    return content;
+  }
+
+  return `${lines.slice(0, MAX_PROMPT_FILE_LINES).join("\n")}\n// [...truncated at 150 lines for fix prompt...]`;
+}
+
+function buildFileContentsSection(analysis: AnalysisResult): string {
+  if (!analysis.fileContents || Object.keys(analysis.fileContents).length === 0) {
     return "";
   }
 
-  const blocks = Object.entries(fileContents)
-    .map(([filePath, content]) => `<file path="${filePath}">\n${content}\n</file>`)
+  const blocks = analysis.relevantFiles
+    .filter((filePath) => typeof analysis.fileContents?.[filePath] === "string")
+    .map((filePath) => {
+      const content = analysis.fileContents?.[filePath] ?? "";
+      return `<file path="${filePath}">\n${truncatePromptSnippet(content)}\n</file>`;
+    })
     .join("\n\n");
+
+  if (blocks.length === 0) {
+    return "";
+  }
 
   return `\n\n<relevant-file-contents>\n${blocks}\n</relevant-file-contents>`;
 }
@@ -144,11 +163,15 @@ function buildPrompt(analysis: AnalysisResult, issue: Issue, repo: Repository): 
     `<issue-title>${issue.title}</issue-title>`,
     `<issue-description>${issue.body ?? "(no body)"}</issue-description>`,
     `<analyzer-relevant-files>${analysis.relevantFiles.join(", ") || "(none provided)"}</analyzer-relevant-files>`,
+    `<analyzer-root-cause>${analysis.rootCause ?? "(not provided)"}</analyzer-root-cause>`,
+    `<analyzer-affected-files>${analysis.affectedFiles?.join(", ") || "(not provided)"}</analyzer-affected-files>`,
+    `<analyzer-complexity>${analysis.complexity ?? "(not provided)"}</analyzer-complexity>`,
+    buildFileContentsSection(analysis),
     `<analyzer-suggested-approach>${analysis.suggestedApproach}</analyzer-suggested-approach>`,
     `<analyzer-confidence>${analysis.confidence}</analyzer-confidence>`,
   ].join("\n\n");
 
-  return base + buildFileContentsSection(analysis.fileContents);
+  return base;
 }
 
 async function persistFixResult(issue: Issue, result: FixResult): Promise<void> {

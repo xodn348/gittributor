@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +26,10 @@ interface CliFixture {
   cleanup: () => Promise<void>;
   runCli: (argv: string[], options?: { io?: CapturedOutput["io"] }) => Promise<{ exitCode: number }>;
   state: StubState;
+}
+
+interface FixtureOptions {
+  oversizedAnalysis?: boolean;
 }
 
 declare global {
@@ -103,7 +107,7 @@ export const getStubState = (): StubState => {
 `;
 };
 
-const createFixture = async (): Promise<CliFixture> => {
+const createFixture = async (options: FixtureOptions = {}): Promise<CliFixture> => {
   const tempDir = await mkdtemp(join(tmpdir(), "gittributor-cli-entrypoint-"));
   const stubState: StubState = {
     analyzeCodebaseCalls: 0,
@@ -150,7 +154,33 @@ export const discoverRepos = async (options: unknown): Promise<unknown[]> => {
 
 export const discoverIssues = async (): Promise<unknown[]> => {
   getStubState().discoverIssuesCalls += 1;
-  return [];
+  return [{
+    id: 123,
+    number: 123,
+    title: "Issue title",
+    body: "Issue body",
+    url: "https://github.com/owner/repo/issues/123",
+    repoFullName: "owner/repo",
+    labels: ["good first issue"],
+    createdAt: "2026-04-01T00:00:00.000Z",
+    assignees: [],
+    reactions: 7,
+    commentsCount: 3,
+    approachabilityScore: 4,
+    impactScore: 2,
+    codebaseScore: 1,
+    totalScore: 7,
+  }];
+};
+
+export const printIssueProposalTable = (): void => {
+  process.stdout.write("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n");
+  process.stdout.write("  TOP 5 FIXABLE ISSUES for owner/repo\\n");
+  process.stdout.write("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n");
+  process.stdout.write("[1] #123  Issue title   (score: 7)\\n");
+  process.stdout.write("    Complexity: low | 👍 7 reactions\\n");
+  process.stdout.write("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n");
+  process.stdout.write("Run 'gittributor fix' to fix issue #123\\n");
 };
 `,
   );
@@ -186,12 +216,15 @@ export const analyzeCodebase = async () => {
   return {
     issueId: 123,
     repoFullName: "owner/repo",
-    relevantFiles: ["src/example.ts"],
-    suggestedApproach: "Update the example path.",
+    relevantFiles: ${options.oversizedAnalysis ? "[]" : '["src/example.ts"]'},
+    suggestedApproach: ${options.oversizedAnalysis ? '"Skip automated analysis because the repository exceeds the analyzer size limit."' : '"Update the example path."'},
     confidence: 0.85,
     analyzedAt: "2026-04-01T00:00:00.000Z",
+    rootCause: ${options.oversizedAnalysis ? '"repo too large to analyze"' : 'undefined'},
   };
 };
+
+export const sanitizeAnalysisForPersistence = (analysis: unknown) => analysis;
 `,
   );
 
@@ -366,8 +399,8 @@ describe("runCli", () => {
     }
   });
 
-  const useFixture = async (): Promise<CliFixture> => {
-    const fixture = await createFixture();
+  const useFixture = async (options: FixtureOptions = {}): Promise<CliFixture> => {
+    const fixture = await createFixture(options);
     fixtures.push(fixture);
     return fixture;
   };
@@ -420,11 +453,28 @@ describe("runCli", () => {
 
   it("dispatches analyze to discoverIssues", async () => {
     const fixture = await useFixture();
+    const stdoutSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const result = await fixture.runCli(["analyze"]);
 
     expect(result.exitCode).toBe(0);
     expect(fixture.state.discoverIssuesCalls).toBe(1);
+    const renderedOutput = stdoutSpy.mock.calls.map(([chunk]) => String(chunk)).join("");
+    expect(renderedOutput).toContain("TOP 5 FIXABLE ISSUES for owner/repo");
+    expect(renderedOutput).toContain("Run 'gittributor fix' to fix issue #123");
+    mock.restore();
+  });
+
+  it("returns exit code 1 when fix is skipped for oversized repositories", async () => {
+    const fixture = await useFixture({ oversizedAnalysis: true });
+    const output = createIo();
+
+    const result = await fixture.runCli(["fix"], { io: output.io });
+
+    expect(result.exitCode).toBe(1);
+    expect(fixture.state.analyzeCodebaseCalls).toBe(1);
+    expect(fixture.state.generateFixCalls).toBe(0);
+    expect(output.readStderr()).toContain("automated analysis was skipped because the repository is too large");
   });
 
   it("dispatches fix without running real integrations", async () => {

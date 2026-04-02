@@ -1,5 +1,6 @@
 import type { Issue, PRSubmission, Repository } from "../types/index";
 import { GitHubAPIError } from "./errors";
+import { debug } from "./logger";
 
 interface RepositorySearchResult {
   name: string;
@@ -17,7 +18,15 @@ interface IssueSearchResult {
   url: string;
   labels: Array<{ name: string } | string>;
   createdAt: string;
+  updatedAt?: string;
+  commentsCount?: number;
   assignees: Array<{ login: string } | string>;
+}
+
+interface IssueDetailsResult {
+  reactions?: {
+    total_count?: number;
+  };
 }
 
 export { GitHubAPIError };
@@ -81,26 +90,29 @@ export class GitHubClient {
       "--state",
       "open",
       "--json",
-      "number,title,body,url,labels,createdAt,assignees",
+      "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
       "--limit",
       String(opts.limit),
     ]);
 
     const data = this.parseJSON<IssueSearchResult[]>(stdout, "searchIssues");
 
-    return data.map((issue) => ({
-      id: issue.number,
-      number: issue.number,
-      title: issue.title,
-      body: issue.body,
-      url: issue.url,
-      repoFullName,
-      labels: issue.labels.map((label) => (typeof label === "string" ? label : label.name)),
-      createdAt: issue.createdAt,
-      assignees: issue.assignees.map((assignee) =>
-        typeof assignee === "string" ? assignee : assignee.login,
-      ),
-    }));
+    return Promise.all(data.map(async (issue) => ({
+        id: issue.number,
+        number: issue.number,
+        title: issue.title,
+        body: issue.body,
+        url: issue.url,
+        repoFullName,
+        labels: issue.labels.map((label) => (typeof label === "string" ? label : label.name)),
+        createdAt: issue.createdAt,
+        updatedAt: issue.updatedAt,
+        assignees: issue.assignees.map((assignee) =>
+          typeof assignee === "string" ? assignee : assignee.login,
+        ),
+        commentsCount: issue.commentsCount ?? 0,
+        reactions: await this.getIssueReactions(repoFullName, issue.number),
+      })));
   }
 
   async forkRepo(repoFullName: string): Promise<string> {
@@ -151,11 +163,32 @@ export class GitHubClient {
   }
 
   async getFileTree(repoFullName: string): Promise<string[]> {
-    const payload = await this.runCommand([
-      "gh", "api", `repos/${repoFullName}/git/trees/HEAD?recursive=1`,
-    ]);
-    const data = this.parseJSON<{ tree: { path: string; type: string }[] }>(payload, "getFileTree");
-    return data.tree.filter((item) => item.type === "blob").map((item) => item.path);
+    try {
+      const payload = await this.runCommand([
+        "gh",
+        "api",
+        `repos/${repoFullName}/git/trees/HEAD?recursive=1`,
+      ]);
+      const data = this.parseJSON<{ tree?: Array<{ path: string; type: string }> }>(payload, "getFileTree");
+      return (data.tree ?? []).filter((item) => item.type === "blob").map((item) => item.path);
+    } catch (error) {
+      if (error instanceof GitHubAPIError) {
+        debug(`Skipping file tree lookup for ${repoFullName}: ${error.message}`);
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  private async getIssueReactions(repoFullName: string, issueNumber: number): Promise<number> {
+    try {
+      const payload = await this.runCommand(["gh", "api", `repos/${repoFullName}/issues/${issueNumber}`]);
+      const data = this.parseJSON<IssueDetailsResult>(payload, "getIssueReactions");
+      return data.reactions?.total_count ?? 0;
+    } catch {
+      return 0;
+    }
   }
 
   private async runCommand(cmd: string[]): Promise<string> {
@@ -207,4 +240,5 @@ export class GitHubClient {
 
     return prNumber;
   }
+
 }

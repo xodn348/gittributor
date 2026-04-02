@@ -22,7 +22,10 @@ export interface Issue {
   repoFullName: string;
   labels: string[];
   createdAt: string;
+  updatedAt?: string;
   assignees: string[];
+  reactions?: number;
+  commentsCount?: number;
 }
 
 export interface AnalysisResult {
@@ -32,6 +35,9 @@ export interface AnalysisResult {
   suggestedApproach: string;
   confidence: number;
   analyzedAt: string;
+  rootCause?: string;
+  affectedFiles?: string[];
+  complexity?: "low" | "medium" | "high";
   fileContents?: Record<string, string>;
 }
 
