@@ -1,5 +1,5 @@
 // Type definitions for gittributor
-export type CommandName = "discover" | "analyze" | "fix" | "review" | "submit";
+export type CommandName = "discover" | "analyze" | "fix" | "review" | "submit" | "run";
 
 export interface Repository {
   id: number;
@@ -94,7 +94,8 @@ export interface PipelineState {
 }
 
 export interface Config {
-  anthropicApiKey: string;
+  anthropicApiKey?: string;
+  oauthToken?: string;
   minStars: number;
   maxPRsPerDay: number;
   maxPRsPerRepo: number;

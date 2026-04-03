@@ -1,0 +1,32 @@
+bun test v1.3.9 (cf6cdbbb)
+[36m[1m[INFO][0m Pipeline state saved (submitted).
+
+tests/submit.test.ts:
+Command failed: git -C .gittributor/workspace/hello-world push origin gittributor/fix-17 (exit 1) push rejected
+[36m[1m[INFO][0m Pipeline state saved (submit_failed).
+Cannot submit: fix was not approved
+[36m[1m[INFO][0m Pipeline state saved (submit_failed).
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m Searching repositories with query: language:TypeScript+stars:>=100+good-first-issues:>0+created:>=2026-03-26&sort=stars&order=desc
+[32m[1mRepository                      Stars     Language        Good First Issues     URL
+octo/good                       120       TypeScript      3                     https://github.com/octo/good[0m
+[36m[1m[INFO][0m Searching repositories with query: language:TypeScript+good-first-issues:>0+created:>=2026-03-26&sort=stars&order=desc
+No repositories found with good first issues.
+[36m[1m[INFO][0m Pipeline state saved (discovered).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (fixed).
+
+ 167 pass
+ 3 skip
+ 0 fail
+ 432 expect() calls
+Ran 170 tests across 20 files. [473.00ms]
+Exit: 1

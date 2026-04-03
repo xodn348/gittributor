@@ -1,6 +1,6 @@
 import { isCommandName } from "../types/guards";
 
-export type ParsedSubcommand = "discover" | "analyze" | "fix" | "review" | "submit" | "help";
+export type ParsedSubcommand = "discover" | "analyze" | "fix" | "review" | "submit" | "run" | "help";
 
 export interface ParsedFlags {
   minStars?: number;

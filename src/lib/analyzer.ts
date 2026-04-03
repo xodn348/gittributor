@@ -275,7 +275,8 @@ async function requestAnalysis(
     ]),
   );
   const responseText = await callAnthropic({
-    apiKey: Bun.env.ANTHROPIC_API_KEY ?? "",
+    apiKey: Bun.env.ANTHROPIC_API_KEY?.trim(),
+    oauthToken: Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
     system: ANALYZER_SYSTEM_PROMPT,
     prompt,
     maxTokens: ANALYZER_MAX_TOKENS,

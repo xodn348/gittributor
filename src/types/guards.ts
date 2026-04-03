@@ -25,7 +25,8 @@ export const isCommandName = (value: unknown): value is CommandName => {
     value === "analyze" ||
     value === "fix" ||
     value === "review" ||
-    value === "submit"
+    value === "submit" ||
+    value === "run"
   );
 };
 
@@ -146,8 +147,11 @@ export const isPipelineState = (value: unknown): value is PipelineState => {
 export const isConfig = (value: unknown): value is Config => {
   if (!isRecord(value)) return false;
 
+  const hasAuth =
+    typeof value.anthropicApiKey === "string" || typeof value.oauthToken === "string";
+
   return (
-    typeof value.anthropicApiKey === "string" &&
+    hasAuth &&
     typeof value.minStars === "number" &&
     typeof value.maxPRsPerDay === "number" &&
     typeof value.maxPRsPerRepo === "number" &&

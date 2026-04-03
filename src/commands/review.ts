@@ -155,7 +155,10 @@ const updateReviewState = async (
   });
 };
 
-export async function reviewFixes(ioOverrides: Partial<ReviewCommandIO> = {}): Promise<number> {
+export async function reviewFixes(
+  ioOverrides: Partial<ReviewCommandIO> = {},
+  { autoApprove }: { autoApprove?: boolean } = {}
+): Promise<number> {
   const io: ReviewCommandIO = {
     stdin: ioOverrides.stdin ?? process.stdin,
     stdout: ioOverrides.stdout ?? process.stdout,
@@ -173,7 +176,13 @@ export async function reviewFixes(ioOverrides: Partial<ReviewCommandIO> = {}): P
   const fixPayload = await loadFixPayload();
   writeFixSummary(fixPayload, io);
 
-  const action = await readDecision(io);
+  let action: "a" | "r" | "s";
+  if (autoApprove) {
+    io.stdout.write("Auto-approving fix (pipeline mode)...\n");
+    action = "a";
+  } else {
+    action = await readDecision(io);
+  }
 
   if (action === "s") {
     return 0;

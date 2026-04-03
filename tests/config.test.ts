@@ -21,7 +21,6 @@ afterEach(async () => {
 describe("loadConfig", () => {
   test("loads defaults when required env vars are present", async () => {
     Bun.env.ANTHROPIC_API_KEY = "anthropic-key";
-    Bun.env.GITHUB_TOKEN = "gh-token";
 
     const config = await loadConfig();
 
@@ -35,9 +34,20 @@ describe("loadConfig", () => {
     });
   });
 
+  test("loads defaults when CLAUDE_CODE_OAUTH_TOKEN is set", async () => {
+    delete Bun.env.ANTHROPIC_API_KEY;
+    Bun.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-test-token";
+
+    const config = await loadConfig();
+
+    expect(config.oauthToken).toBe("sk-ant-oat01-test-token");
+    expect(config.anthropicApiKey).toBeUndefined();
+    expect(config.minStars).toBe(50);
+    expect(config.maxPRsPerDay).toBe(5);
+  });
+
   test("does not share default targetLanguages array across calls", async () => {
     Bun.env.ANTHROPIC_API_KEY = "anthropic-key";
-    Bun.env.GITHUB_TOKEN = "gh-token";
 
     const first = await loadConfig();
     first.targetLanguages.push("go");
@@ -53,7 +63,6 @@ describe("loadConfig", () => {
 
     Bun.env.HOME = homeDir;
     Bun.env.ANTHROPIC_API_KEY = "anthropic-key";
-    Bun.env.GITHUB_TOKEN = "gh-token";
 
     await Bun.write(
       join(homeDir, ".gittributorrc.json"),
@@ -75,9 +84,9 @@ describe("loadConfig", () => {
     expect(config.verbose).toBe(true);
   });
 
-  test("throws ConfigError when ANTHROPIC_API_KEY is missing", async () => {
+  test("throws ConfigError when neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set", async () => {
     delete Bun.env.ANTHROPIC_API_KEY;
-    Bun.env.GITHUB_TOKEN = "gh-token";
+    delete Bun.env.CLAUDE_CODE_OAUTH_TOKEN;
 
     try {
       await loadConfig();
@@ -86,23 +95,8 @@ describe("loadConfig", () => {
       expect(error).toBeInstanceOf(ConfigError);
 
       if (error instanceof Error) {
+        expect(error.message).toContain("CLAUDE_CODE_OAUTH_TOKEN");
         expect(error.message).toContain("ANTHROPIC_API_KEY");
-      }
-    }
-  });
-
-  test("throws ConfigError when GITHUB_TOKEN is missing", async () => {
-    Bun.env.ANTHROPIC_API_KEY = "anthropic-key";
-    delete Bun.env.GITHUB_TOKEN;
-
-    try {
-      await loadConfig();
-      throw new Error("Expected loadConfig to throw");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ConfigError);
-
-      if (error instanceof Error) {
-        expect(error.message).toContain("GITHUB_TOKEN");
       }
     }
   });

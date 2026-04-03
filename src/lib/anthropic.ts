@@ -100,7 +100,8 @@ async function parseErrorMessage(response: Response): Promise<string> {
 }
 
 export async function callAnthropic(options: {
-  apiKey: string;
+  apiKey?: string;
+  oauthToken?: string;
   system: string;
   prompt: string;
   maxTokens: number;
@@ -112,13 +113,24 @@ export async function callAnthropic(options: {
     messages: [{ role: "user", content: options.prompt }],
   };
 
+  // OAuth takes priority over API key
+  const headers: Record<string, string> = {
+    "anthropic-version": ANTHROPIC_VERSION,
+    "content-type": "application/json",
+  };
+
+  if (options.oauthToken) {
+    headers["Authorization"] = `Bearer ${options.oauthToken}`;
+    headers["anthropic-beta"] = "oauth-2025-04-20";
+  } else if (options.apiKey) {
+    headers["x-api-key"] = options.apiKey;
+  } else {
+    throw new AnthropicAPIError("No authentication token provided.");
+  }
+
   const response = await fetch(ANTHROPIC_MESSAGES_ENDPOINT, {
     method: "POST",
-    headers: {
-      "x-api-key": options.apiKey,
-      "anthropic-version": ANTHROPIC_VERSION,
-      "content-type": "application/json",
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -159,7 +171,8 @@ function parseJsonObject(text: string, field: string): Record<string, unknown> {
 export async function analyzeCodeForIssue(opts: {
   issue: Issue;
   codeContext: string;
-  apiKey: string;
+  apiKey?: string;
+  oauthToken?: string;
 }): Promise<AnalysisResult> {
   const prompt = [
     "Analyze this GitHub issue against the provided code context.",
@@ -173,6 +186,7 @@ export async function analyzeCodeForIssue(opts: {
 
   const text = await callAnthropic({
     apiKey: opts.apiKey,
+    oauthToken: opts.oauthToken,
     system: "You are a senior code analyst for automated OSS contributions.",
     prompt,
     maxTokens: 1024,
@@ -200,7 +214,8 @@ export async function generateFix(opts: {
   issue: Issue;
   analysis: AnalysisResult;
   fileContents: Record<string, string>;
-  apiKey: string;
+  apiKey?: string;
+  oauthToken?: string;
 }): Promise<FixResult> {
   const prompt = [
     "Generate a unified diff patch to fix the issue.",
@@ -216,6 +231,7 @@ export async function generateFix(opts: {
 
   const text = await callAnthropic({
     apiKey: opts.apiKey,
+    oauthToken: opts.oauthToken,
     system: "You are a senior software engineer generating safe, minimal patches.",
     prompt,
     maxTokens: 2048,
@@ -240,7 +256,8 @@ export async function generateFix(opts: {
 export async function createPRDescription(opts: {
   issue: Issue;
   fix: FixResult;
-  apiKey: string;
+  apiKey?: string;
+  oauthToken?: string;
 }): Promise<string> {
   const prompt = [
     "Write a concise GitHub pull request description in markdown.",
@@ -253,6 +270,7 @@ export async function createPRDescription(opts: {
 
   const text = await callAnthropic({
     apiKey: opts.apiKey,
+    oauthToken: opts.oauthToken,
     system: "You are a technical writer producing clear pull request descriptions.",
     prompt,
     maxTokens: 768,

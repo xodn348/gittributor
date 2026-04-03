@@ -1,0 +1,3 @@
+- 2026-04-01: In Bun tests, file-scope `mock.module()` can leak mocked modules into unrelated suites. Keep the mock registration close to the import of the module under test, and use a truly unique cache-busting query instead of `Date.now()` when the test also mocks time.
+- 2026-04-01: `mock.restore()` resets spies but does not undo `mock.module()` overrides. For command tests that only need to fake a class method, spying on `GitHubClient.prototype` is safer than replacing the whole module.
+- 2026-04-01: For analyzer tests in the current codebase, the right seam is `callAnthropic`, not `analyzeCodeForIssue`, because `src/lib/analyzer.ts` now builds the prompt itself and parses the raw Anthropic JSON response.

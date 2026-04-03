@@ -1,0 +1,3 @@
+- 2026-04-01: Fixed cross-suite Bun mock contamination in tests by isolating mocked imports behind per-test loader helpers and monotonic cache-busters, instead of changing production exports or runtime logic.
+- 2026-04-01: Replaced leaky `mock.module()` usage in `tests/discover.test.ts` and `tests/issues.test.ts` with prototype spies on the real `GitHubClient`, and rewired `tests/analyzer.test.ts` to spy on `callAnthropic` plus the real logger binding so later suites keep importing the real modules.
+- 2026-04-01: Hardened `tests/cli-entrypoint.test.ts` with a fixture-local config snapshot to avoid cross-file environment races during Bun's full-suite execution.

@@ -21,6 +21,8 @@ const USAGE_TEXT = [
   "  fix         Analyze the top issue and generate a fix payload",
   "  review      Review the generated fix payload",
   "  submit      Submit the approved fix as a pull request",
+  "  run         Run the full pipeline: discover → analyze → fix → review → submit",
+  "  run         Run the full pipeline: discover → analyze → fix → review → submit",
   "",
   "Global options:",
   "  --help           Show this usage information",
@@ -44,7 +46,7 @@ interface ParsedGlobalArgs {
   commandArgs: string[];
 }
 
-type SupportedCommand = "analyze" | "discover" | "fix" | "help" | "review" | "submit";
+type SupportedCommand = "analyze" | "discover" | "fix" | "help" | "review" | "submit" | "run";
 
 interface ConfigOverrides {
   maxPRsPerDay?: number;
@@ -112,7 +114,7 @@ const readPackageVersion = async (): Promise<string> => {
 };
 
 const isSupportedCommand = (value: string): value is SupportedCommand => {
-  return value === "discover" || value === "analyze" || value === "fix" || value === "review" || value === "submit" || value === "help";
+  return value === "discover" || value === "analyze" || value === "fix" || value === "review" || value === "submit" || value === "run" || value === "help";
 };
 
 const validateCommandShape = (commandArgs: string[]): void => {
@@ -137,6 +139,7 @@ const validateCommandShape = (commandArgs: string[]): void => {
     fix: [],
     review: [],
     submit: [],
+    run: [],
     discover: ["--min-stars=", "--language=", "--max-results="],
   };
 
@@ -433,6 +436,24 @@ const runFixCommand = async (): Promise<number> => {
   return 0;
 };
 
+
+const runPipelineCommand = async (runtimeConfig: Config, commandArgs: string[]): Promise<number> => {
+  const discoverResult = await runDiscoverCommand(runtimeConfig, commandArgs);
+  if (discoverResult !== 0) return discoverResult;
+
+  const analyzeResult = await runAnalyzeCommand();
+  if (analyzeResult !== 0) return analyzeResult;
+
+  const fixResult = await runFixCommand();
+  if (fixResult !== 0) return fixResult;
+
+  const reviewResult = await reviewFix({}, { autoApprove: true });
+  if (reviewResult !== 0) return reviewResult;
+
+  return submitApprovedFix();
+};
+
+
 const printHelp = (output: CliOutput): number => {
   writeStandardLine(output, USAGE_TEXT);
   return 0;
@@ -479,9 +500,11 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
       await (runtimeConfig ?? resolveRuntimeConfig(globalFlags));
       return runFixCommand();
     case "review":
-      return reviewFix();
+      return reviewFix({});
     case "submit":
       return submitApprovedFix();
+    case "run":
+      return runPipelineCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs);
   }
 };
 

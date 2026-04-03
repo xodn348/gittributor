@@ -1,3 +1,4 @@
 - Kept the existing `src/index.ts` entrypoint and tightened its dispatch flow instead of replacing it, because the file already matched the required CLI surface and only needed consistent config initialization plus executable permissions.
 - Used an isolated fixture-based command-module mocking test instead of persistent `mock.module` hooks so `bun test` stays green across the full repository.
 - Kept config loading conditional for `review` and `submit` unless `--config` is explicitly provided, which satisfies the global-flag contract without regressing the existing no-env review path.
+- 2026-04-01: Kept the analyze proposal output in the CLI layer (`src/index.ts`) and the formatting logic in `src/commands/analyze.ts`, so the ranked table is visible in real runs without coupling issue discovery to stdout side effects.

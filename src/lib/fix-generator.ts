@@ -207,14 +207,14 @@ export async function generateFix(
   issue: Issue,
   repo: Repository,
 ): Promise<FixResult> {
-  const apiKey = Bun.env.ANTHROPIC_API_KEY ?? "";
   const system = buildSystemPrompt();
   const prompt = buildPrompt(analysis, issue, repo);
 
   let responseText: string;
   try {
     responseText = await callAnthropic({
-      apiKey,
+      apiKey: Bun.env.ANTHROPIC_API_KEY?.trim(),
+      oauthToken: Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
       system,
       prompt,
       maxTokens: MAX_FIX_TOKENS,

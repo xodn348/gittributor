@@ -1,3 +1,5 @@
 - `src/index.ts` must resolve runtime config before dispatching any real subcommand so `review` and `submit` honor the same env/config validation path as `discover` and `fix`.
 - Bun module mocks can leak across the broader test run in this repo, so the stable CLI-entrypoint test strategy here is an isolated temp fixture that stubs command modules without contaminating other test files.
 - The exact verification command `bun test tests/cli-entrypoint.test.ts` now works reliably from the repo root, so the entrypoint test can be used as the focused red/green check for CLI wiring.
+- Correction: runtime config loading stays conditional for `review`, `submit`, and `analyze`; only `discover` and `fix` require env/config loading by default, while `--config` forces pre-dispatch config resolution.
+- 2026-04-01: `analyze` can print a ranked issue proposal summary directly from the entrypoint as long as the formatter lives in `src/commands/analyze.ts`; the CLI test fixture only needs a no-op `printIssueProposalTable` export to keep the wiring test isolated.
