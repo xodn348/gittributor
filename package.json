@@ -8,6 +8,7 @@
     "gittributor": "src/index.ts"
   },
   "scripts": {
+    "gittributor": "bun run src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "build": "bun build ./src/index.ts --outdir=./dist --target=bun"

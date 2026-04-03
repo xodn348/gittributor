@@ -151,8 +151,6 @@ describe("GitHubClient", () => {
         "owner/repo",
         "--label",
         "good first issue",
-        "--label",
-        "bug",
         "--state",
         "open",
         "--json",
@@ -302,7 +300,7 @@ describe("GitHubClient", () => {
     });
   });
 
-  it("searchIssues always includes good first issue even with additional labels", async () => {
+  it("searchIssues ignores additional labels and only queries good first issue", async () => {
     spawnMock.mockReturnValue(createMockProcess({ stdout: JSON.stringify([]) }));
 
     const client = new GitHubClient();
@@ -320,8 +318,6 @@ describe("GitHubClient", () => {
         "owner/repo",
         "--label",
         "good first issue",
-        "--label",
-        "bug",
         "--state",
         "open",
         "--json",

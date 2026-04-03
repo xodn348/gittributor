@@ -72,9 +72,9 @@ describe("discoverIssues", () => {
     expect(issues[0]?.number).toBe(2);
   });
 
-  it("filters stale issues older than 30 days based on updatedAt", async () => {
+  it("filters stale issues older than one year based on updatedAt", async () => {
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
-      makeIssue({ id: 1, number: 1, updatedAt: "2026-02-15T00:00:00.000Z" }),
+      makeIssue({ id: 1, number: 1, updatedAt: "2024-02-15T00:00:00.000Z" }),
       makeIssue({ id: 2, number: 2, updatedAt: "2026-03-10T00:00:00.000Z" }),
     ]);
 
@@ -167,7 +167,7 @@ describe("discoverIssues", () => {
       makeIssue({
         id: 2,
         number: 2,
-        updatedAt: "2026-02-20T00:00:00.000Z",
+        updatedAt: "2024-02-20T00:00:00.000Z",
       }),
       makeIssue({
         id: 3,

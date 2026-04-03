@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { AnalysisResult, FixResult, Issue } from "../src/types/index";
 import {
   AnthropicAPIError,
-  RateLimitError,
   analyzeCodeForIssue,
   createPRDescription,
   generateFix,
 } from "../src/lib/anthropic";
+
+const CLAUDE_CLI_PATH =
+  "/Users/jnnj92/Library/Application Support/Claude/claude-code/2.1.78/claude.app/Contents/MacOS/claude";
 
 const issueFixture: Issue = {
   id: 101,
@@ -39,16 +41,25 @@ const fixFixture: FixResult = {
   generatedAt: "2026-03-31T12:10:00.000Z",
 };
 
-function anthropicResponse(text: string): Response {
-  return new Response(
-    JSON.stringify({
-      id: "msg_123",
-      type: "message",
-      role: "assistant",
-      content: [{ type: "text", text }],
-    }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
+function toStream(text: string): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    },
+  });
+}
+
+function createMockProcess(options: {
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+}): Bun.Subprocess {
+  return {
+    stdout: toStream(options.stdout ?? ""),
+    stderr: toStream(options.stderr ?? ""),
+    exited: Promise.resolve(options.exitCode ?? 0),
+  } as unknown as Bun.Subprocess;
 }
 
 describe("anthropic client wrapper", () => {
@@ -56,9 +67,9 @@ describe("anthropic client wrapper", () => {
     mock.restore();
   });
 
-  it("analyzeCodeForIssue sends raw fetch request and returns AnalysisResult", async () => {
-    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
-      anthropicResponse(JSON.stringify(analysisFixture)),
+  it("analyzeCodeForIssue invokes Claude CLI and returns AnalysisResult", async () => {
+    const spawnMock = spyOn(Bun, "spawn").mockReturnValue(
+      createMockProcess({ stdout: JSON.stringify(analysisFixture) }),
     );
 
     const result = await analyzeCodeForIssue({
@@ -75,25 +86,26 @@ describe("anthropic client wrapper", () => {
       confidence: analysisFixture.confidence,
     });
     expect(Number.isNaN(Date.parse(result.analyzedAt))).toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://api.anthropic.com/v1/messages");
-    expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({
-      "x-api-key": "test-key",
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    });
-
-    const body = JSON.parse(String(init.body));
-    expect(body.model).toBe("claude-3-5-haiku-20241022");
-    expect(body.messages[0].role).toBe("user");
+    const spawnArg = spawnMock.mock.calls[0]?.[0] as unknown as {
+      cmd: string[];
+      stdout: "pipe";
+      stderr: "pipe";
+    };
+    expect(spawnArg.cmd[0]).toBe(CLAUDE_CLI_PATH);
+    expect(spawnArg.cmd[1]).toBe("-p");
+    expect(spawnArg.cmd[2]).toContain("[SYSTEM]");
+    expect(spawnArg.cmd[2]).toContain("[USER]");
+    expect(spawnArg.cmd[2]).toContain(issueFixture.title);
+    expect(spawnArg.cmd[3]).toBe("--dangerously-skip-permissions");
+    expect(spawnArg.stdout).toBe("pipe");
+    expect(spawnArg.stderr).toBe("pipe");
   });
 
   it("generateFix returns FixResult from Claude response", async () => {
-    spyOn(globalThis, "fetch").mockResolvedValue(
-      anthropicResponse(JSON.stringify(fixFixture)),
+    spyOn(Bun, "spawn").mockReturnValue(
+      createMockProcess({ stdout: JSON.stringify(fixFixture) }),
     );
 
     const result = await generateFix({
@@ -117,8 +129,10 @@ describe("anthropic client wrapper", () => {
   });
 
   it("createPRDescription returns generated markdown including AI disclosure", async () => {
-    spyOn(globalThis, "fetch").mockResolvedValue(
-      anthropicResponse("## Summary\n- Added null guard\n\nGenerated with AI assistance"),
+    spyOn(Bun, "spawn").mockReturnValue(
+      createMockProcess({
+        stdout: "## Summary\n- Added null guard\n\nGenerated with AI assistance",
+      }),
     );
 
     const result = await createPRDescription({
@@ -131,51 +145,27 @@ describe("anthropic client wrapper", () => {
     expect(result).toContain("## Summary");
   });
 
-  it("throws RateLimitError on 429 response", async () => {
-    spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("rate limit", { status: 429 }),
+  it("throws AnthropicAPIError on non-zero Claude CLI exit", async () => {
+    spyOn(Bun, "spawn").mockReturnValue(
+      createMockProcess({ stderr: "permission denied", exitCode: 2 }),
     );
 
-    await expect(
+    return expect(
       analyzeCodeForIssue({
         issue: issueFixture,
         codeContext: "context",
-        apiKey: "test-key",
-      }),
-    ).rejects.toBeInstanceOf(RateLimitError);
-  });
-
-  it("throws AnthropicAPIError on non-200 response", async () => {
-    spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("server failure", { status: 500 }),
-    );
-
-    await expect(
-      createPRDescription({
-        issue: issueFixture,
-        fix: fixFixture,
         apiKey: "test-key",
       }),
     ).rejects.toBeInstanceOf(AnthropicAPIError);
   });
 
-  it("treats 201 responses as AnthropicAPIError because only 200 is accepted", async () => {
-    spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          id: "msg_201",
-          type: "message",
-          role: "assistant",
-          content: [{ type: "text", text: JSON.stringify(analysisFixture) }],
-        }),
-        { status: 201, headers: { "content-type": "application/json" } },
-      ),
-    );
+  it("throws AnthropicAPIError on empty Claude CLI output", async () => {
+    spyOn(Bun, "spawn").mockReturnValue(createMockProcess({ stdout: "   " }));
 
-    await expect(
-      analyzeCodeForIssue({
+    return expect(
+      createPRDescription({
         issue: issueFixture,
-        codeContext: "context",
+        fix: fixFixture,
         apiKey: "test-key",
       }),
     ).rejects.toBeInstanceOf(AnthropicAPIError);

@@ -147,11 +147,14 @@ export const isPipelineState = (value: unknown): value is PipelineState => {
 export const isConfig = (value: unknown): value is Config => {
   if (!isRecord(value)) return false;
 
-  const hasAuth =
-    typeof value.anthropicApiKey === "string" || typeof value.oauthToken === "string";
+  const hasValidApiKey =
+    value.anthropicApiKey === undefined || typeof value.anthropicApiKey === "string";
+  const hasValidOauthToken =
+    value.oauthToken === undefined || typeof value.oauthToken === "string";
 
   return (
-    hasAuth &&
+    hasValidApiKey &&
+    hasValidOauthToken &&
     typeof value.minStars === "number" &&
     typeof value.maxPRsPerDay === "number" &&
     typeof value.maxPRsPerRepo === "number" &&

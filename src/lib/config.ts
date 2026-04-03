@@ -92,12 +92,6 @@ export const loadConfig = async (): Promise<Config> => {
   const oauthToken = Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
   const anthropicApiKey = Bun.env.ANTHROPIC_API_KEY?.trim();
 
-  if (!oauthToken && !anthropicApiKey) {
-    throw new ConfigError(
-      "Missing authentication: set CLAUDE_CODE_OAUTH_TOKEN (OAuth) or ANTHROPIC_API_KEY"
-    );
-  }
-
   const homeDir = Bun.env.HOME ?? Bun.env.USERPROFILE;
   const configFileOverrides = homeDir ? await readConfigFile(homeDir) : {};
 

@@ -366,6 +366,18 @@ describe("isPipelineState", () => {
 });
 
 describe("isConfig", () => {
+  test("returns true when auth fields are omitted", () => {
+    const value = {
+      minStars: 50,
+      maxPRsPerDay: 5,
+      maxPRsPerRepo: 1,
+      targetLanguages: ["TypeScript", "JavaScript", "Python"],
+      verbose: false,
+    };
+
+    expect(isConfig(value)).toBe(true);
+  });
+
   test("returns true for valid config", () => {
     const value = {
       anthropicApiKey: "key",

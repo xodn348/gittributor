@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "path";
-import { loadConfig, ConfigError } from "../src/lib/config";
+import { loadConfig } from "../src/lib/config";
 
 const originalEnv = { ...Bun.env };
 
@@ -20,6 +20,7 @@ afterEach(async () => {
 
 describe("loadConfig", () => {
   test("loads defaults when required env vars are present", async () => {
+    delete Bun.env.CLAUDE_CODE_OAUTH_TOKEN;
     Bun.env.ANTHROPIC_API_KEY = "anthropic-key";
 
     const config = await loadConfig();
@@ -84,20 +85,17 @@ describe("loadConfig", () => {
     expect(config.verbose).toBe(true);
   });
 
-  test("throws ConfigError when neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set", async () => {
+  test("loads config when neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set", async () => {
     delete Bun.env.ANTHROPIC_API_KEY;
     delete Bun.env.CLAUDE_CODE_OAUTH_TOKEN;
 
-    try {
-      await loadConfig();
-      throw new Error("Expected loadConfig to throw");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ConfigError);
+    const config = await loadConfig();
 
-      if (error instanceof Error) {
-        expect(error.message).toContain("CLAUDE_CODE_OAUTH_TOKEN");
-        expect(error.message).toContain("ANTHROPIC_API_KEY");
-      }
-    }
+    expect(config.oauthToken).toBeUndefined();
+    expect(config.anthropicApiKey).toBeUndefined();
+    expect(config.minStars).toBe(50);
+    expect(config.maxPRsPerDay).toBe(5);
+    expect(config.maxPRsPerRepo).toBe(1);
+    expect(config.targetLanguages).toEqual(["typescript", "javascript", "python"]);
   });
 });

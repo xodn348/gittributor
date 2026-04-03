@@ -3,40 +3,8 @@ import { AnthropicAPIError, RateLimitError } from "./errors";
 
 export { AnthropicAPIError, RateLimitError };
 
-const ANTHROPIC_MESSAGES_ENDPOINT = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_VERSION = "2023-06-01";
-const MODEL = "claude-3-5-haiku-20241022";
-
-interface AnthropicMessageRequest {
-  model: string;
-  max_tokens: number;
-  system?: string;
-  messages: Array<{ role: "user"; content: string }>;
-}
-
-interface AnthropicTextBlock {
-  type: "text";
-  text: string;
-}
-
-interface AnthropicContentBlock {
-  type: string;
-  text?: string;
-}
-
-interface AnthropicMessageResponse {
-  content: AnthropicContentBlock[];
-}
-
-function isAnthropicMessageResponse(value: unknown): value is AnthropicMessageResponse {
-  if (!isRecord(value) || !Array.isArray(value.content)) {
-    return false;
-  }
-
-  return value.content.every((block) => {
-    return isRecord(block) && typeof block.type === "string";
-  });
-}
+const CLAUDE_CLI_PATH =
+  "/Users/jnnj92/Library/Application Support/Claude/claude-code/2.1.78/claude.app/Contents/MacOS/claude";
 
 function clampConfidence(confidence: unknown): number {
   if (typeof confidence !== "number" || Number.isNaN(confidence)) {
@@ -58,45 +26,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function extractMessageText(response: AnthropicMessageResponse): string {
-  const text = response.content
-    .filter((block): block is AnthropicTextBlock => {
-      return block.type === "text" && typeof block.text === "string";
-    })
-    .map((block) => block.text)
-    .join("")
-    .trim();
-
-  if (!text) {
-    throw new AnthropicAPIError("Anthropic response did not contain text content.");
-  }
-
-  return text;
-}
-
-async function parseErrorMessage(response: Response): Promise<string> {
-  const rawBody = await response.text();
-
-  if (!rawBody) {
-    return `Anthropic API responded with status ${response.status}.`;
-  }
-
-  try {
-    const parsed = JSON.parse(rawBody) as unknown;
-
-    if (!isRecord(parsed) || !isRecord(parsed.error)) {
-      return rawBody;
-    }
-
-    const message = parsed.error.message;
-    if (typeof message === "string" && message.length > 0) {
-      return message;
-    }
-
-    return rawBody;
-  } catch {
-    return rawBody;
-  }
+function buildCliPrompt(system: string, prompt: string): string {
+  return `[SYSTEM]\n${system}\n\n[USER]\n${prompt}`;
 }
 
 export async function callAnthropic(options: {
@@ -106,49 +37,59 @@ export async function callAnthropic(options: {
   prompt: string;
   maxTokens: number;
 }): Promise<string> {
-  const payload: AnthropicMessageRequest = {
-    model: MODEL,
-    max_tokens: options.maxTokens,
-    system: options.system,
-    messages: [{ role: "user", content: options.prompt }],
-  };
+  void options.apiKey;
+  void options.oauthToken;
+  void options.maxTokens;
 
-  // OAuth takes priority over API key
-  const headers: Record<string, string> = {
-    "anthropic-version": ANTHROPIC_VERSION,
-    "content-type": "application/json",
-  };
-
-  if (options.oauthToken) {
-    headers["Authorization"] = `Bearer ${options.oauthToken}`;
-    headers["anthropic-beta"] = "oauth-2025-04-20";
-  } else if (options.apiKey) {
-    headers["x-api-key"] = options.apiKey;
-  } else {
-    throw new AnthropicAPIError("No authentication token provided.");
+  const fullPrompt = buildCliPrompt(options.system, options.prompt);
+  let proc: Bun.Subprocess;
+  try {
+    proc = Bun.spawn({
+      cmd: [
+        CLAUDE_CLI_PATH,
+        "-p",
+        fullPrompt,
+        "--dangerously-skip-permissions",
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unknown spawn failure";
+    throw new AnthropicAPIError(`Failed to start Claude CLI: ${detail}`);
   }
 
-  const response = await fetch(ANTHROPIC_MESSAGES_ENDPOINT, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
-
-  if (response.status !== 200) {
-    const message = await parseErrorMessage(response);
-    if (response.status === 429) {
-      throw new RateLimitError(message);
-    }
-
-    throw new AnthropicAPIError(message, response.status);
+  let stdout = "";
+  let stderr = "";
+  let exitCode = 0;
+  try {
+    const [nextStdout, nextStderr, nextExitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    stdout = nextStdout;
+    stderr = nextStderr;
+    exitCode = nextExitCode;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unknown subprocess failure";
+    throw new AnthropicAPIError(`Claude CLI subprocess failed: ${detail}`);
   }
 
-  const data = (await response.json()) as unknown;
-  if (!isAnthropicMessageResponse(data)) {
-    throw new AnthropicAPIError("Anthropic response shape is invalid.");
+  if (exitCode !== 0) {
+    const detail = stderr.trim();
+    const message = detail
+      ? `Claude CLI exited with status ${exitCode}: ${detail}`
+      : `Claude CLI exited with status ${exitCode}.`;
+    throw new AnthropicAPIError(message, exitCode);
   }
 
-  return extractMessageText(data);
+  const text = stdout.trim();
+  if (text.length === 0) {
+    throw new AnthropicAPIError("Claude CLI returned empty output.");
+  }
+
+  return text;
 }
 
 function parseJsonObject(text: string, field: string): Record<string, unknown> {

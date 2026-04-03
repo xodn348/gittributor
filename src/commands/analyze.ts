@@ -6,7 +6,7 @@ import type { Issue, Repository } from "../types";
 
 const ISSUE_LABELS = ["good first issue", "good-first-issue", "beginner", "help wanted"];
 const ISSUE_SEARCH_LIMIT = 50;
-const THIRTY_DAYS_IN_MS = 30 * 24 * 60 * 60 * 1000;
+const ONE_YEAR_IN_MS = 365 * 24 * 60 * 60 * 1000;
 const FILE_PATH_PATTERN = /(?:[\w.-]+\/)*[\w.-]+\.[a-z0-9]+/gi;
 const DIRECTORY_PATTERN = /(?:src|lib|app|tests?|packages|docs)\/[\w./-]+/gi;
 const STOP_WORDS = new Set([
@@ -86,7 +86,7 @@ const isNotStale = (issue: Issue): boolean => {
     return false;
   }
 
-  return Date.now() - updatedAtMs <= THIRTY_DAYS_IN_MS;
+  return Date.now() - updatedAtMs <= ONE_YEAR_IN_MS;
 };
 
 const hasClearDescription = (issue: Issue): boolean => {
