@@ -385,20 +385,30 @@ const runDiscoverCommand = async (runtimeConfig: Config, commandArgs: string[]):
   return 0;
 };
 
-const runAnalyzeCommand = async (): Promise<number> => {
+const runAnalyzeCommand = async (output: CliOutput): Promise<number> => {
   const currentState = await loadState();
-  const selectedRepository = selectRepositoryForAnalysis(currentState.repositories);
-  const discoveredIssuesForRepository = await discoverIssues(selectedRepository);
+  selectRepositoryForAnalysis(currentState.repositories);
 
-  printIssueProposalTable(selectedRepository, discoveredIssuesForRepository);
+  for (const repository of currentState.repositories) {
+    const discoveredIssuesForRepository = await discoverIssues(repository);
 
-  await saveState({
-    ...currentState,
-    status: "analyzed",
-    issues: discoveredIssuesForRepository,
-  });
+    if (discoveredIssuesForRepository.length === 0) {
+      continue;
+    }
 
-  return 0;
+    printIssueProposalTable(repository, discoveredIssuesForRepository);
+
+    await saveState({
+      ...currentState,
+      status: "analyzed",
+      issues: discoveredIssuesForRepository,
+    });
+
+    return 0;
+  }
+
+  writeErrorLine(output, "No issues found across all repositories.");
+  return 1;
 };
 
 const runFixCommand = async (): Promise<number> => {
@@ -437,11 +447,11 @@ const runFixCommand = async (): Promise<number> => {
 };
 
 
-const runPipelineCommand = async (runtimeConfig: Config, commandArgs: string[]): Promise<number> => {
+const runPipelineCommand = async (runtimeConfig: Config, commandArgs: string[], output: CliOutput): Promise<number> => {
   const discoverResult = await runDiscoverCommand(runtimeConfig, commandArgs);
   if (discoverResult !== 0) return discoverResult;
 
-  const analyzeResult = await runAnalyzeCommand();
+  const analyzeResult = await runAnalyzeCommand(output);
   if (analyzeResult !== 0) return analyzeResult;
 
   const fixResult = await runFixCommand();
@@ -495,7 +505,7 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
     case "discover":
       return runDiscoverCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs);
     case "analyze":
-      return runAnalyzeCommand();
+      return runAnalyzeCommand(output);
     case "fix":
       await (runtimeConfig ?? resolveRuntimeConfig(globalFlags));
       return runFixCommand();
@@ -504,7 +514,7 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
     case "submit":
       return submitApprovedFix();
     case "run":
-      return runPipelineCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs);
+      return runPipelineCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs, output);
   }
 };
 
