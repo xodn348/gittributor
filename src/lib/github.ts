@@ -196,7 +196,10 @@ export class GitHubClient {
       const payload = await this.runCommand(["gh", "api", `repos/${repoFullName}/issues/${issueNumber}`]);
       const data = this.parseJSON<IssueDetailsResult>(payload, "getIssueReactions");
       return data.reactions?.total_count ?? 0;
-    } catch {
+    } catch (error) {
+      debug(
+        `Skipping reactions lookup for ${repoFullName}#${issueNumber}: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
       return 0;
     }
   }

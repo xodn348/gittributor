@@ -94,6 +94,10 @@ const hasClearDescription = (issue: Issue): boolean => {
   return body.trim().length > 50;
 };
 
+const isUnassigned = (issue: Issue): boolean => {
+  return issue.assignees.length === 0;
+};
+
 const scoreApproachability = (issue: Issue): number => {
   const body = issue.body ?? "";
   let score = 0;
@@ -244,7 +248,7 @@ export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
   ]);
 
   const filtered = issues.filter((issue) => {
-    return isNotStale(issue) && hasClearDescription(issue);
+    return isUnassigned(issue) && isNotStale(issue) && hasClearDescription(issue);
   });
 
   const scored = filtered
