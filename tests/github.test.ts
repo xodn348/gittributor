@@ -109,26 +109,42 @@ describe("GitHubClient", () => {
               title: "Fix typing issue",
               body: "Details",
               url: "https://github.com/owner/repo/issues/42",
-            labels: [{ name: "good first issue" }, { name: "bug" }],
-            createdAt: "2026-03-31T00:00:00Z",
-            updatedAt: "2026-04-01T00:00:00Z",
-            commentsCount: 4,
-            assignees: [{ login: "alice" }, { login: "bob" }],
-          },
+              labels: [{ name: "good first issue" }, { name: "bug" }],
+              createdAt: "2026-03-31T00:00:00Z",
+              updatedAt: "2026-04-01T00:00:00Z",
+              commentsCount: 4,
+              assignees: [{ login: "alice" }, { login: "bob" }],
+            },
           ]),
         }),
       )
       .mockReturnValueOnce(
         createMockProcess({
-          stdout: JSON.stringify({ reactions: { total_count: 7 } }),
+          stdout: JSON.stringify([]),
+        }),
+      )
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify({
+            reactions: {
+              total_count: 7,
+              "+1": 4,
+              laugh: 0,
+              hooray: 3,
+              heart: 0,
+              rocket: 0,
+              eyes: 0,
+            },
+          }),
         }),
       );
 
     const client = new GitHubClient();
-    const result = await client.searchIssues("owner/repo", {
+    const opts = {
       labels: ["good first issue", "bug"],
       limit: 5,
-    });
+    };
+    const result = await client.searchIssues("owner/repo", opts);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -150,7 +166,7 @@ describe("GitHubClient", () => {
         "--repo",
         "owner/repo",
         "--label",
-        "good first issue",
+        opts.labels[0],
         "--state",
         "open",
         "--json",
@@ -162,6 +178,25 @@ describe("GitHubClient", () => {
       stderr: "pipe",
     });
     expect(spawnMock).toHaveBeenNthCalledWith(2, {
+      cmd: [
+        "gh",
+        "search",
+        "issues",
+        "--repo",
+        "owner/repo",
+        "--label",
+        opts.labels[1],
+        "--state",
+        "open",
+        "--json",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
+        "--limit",
+        "5",
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(spawnMock).toHaveBeenNthCalledWith(3, {
       cmd: ["gh", "api", "repos/owner/repo/issues/42"],
       stdout: "pipe",
       stderr: "pipe",
@@ -176,12 +211,14 @@ describe("GitHubClient", () => {
     );
 
     const client = new GitHubClient();
-    const result = await client.searchIssues("owner/repo", {
+    const opts = {
       labels: [],
       limit: 3,
-    });
+    };
+    const result = await client.searchIssues("owner/repo", opts);
 
     expect(result).toEqual([]);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(spawnMock).toHaveBeenCalledWith({
       cmd: [
         "gh",
@@ -300,16 +337,48 @@ describe("GitHubClient", () => {
     });
   });
 
-  it("searchIssues ignores additional labels and only queries good first issue", async () => {
-    spawnMock.mockReturnValue(createMockProcess({ stdout: JSON.stringify([]) }));
+  it("searchIssues searches each label separately", async () => {
+    spawnMock
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify([
+            {
+              number: 8,
+              title: "Fix bug",
+              body: "Details",
+              url: "https://github.com/owner/repo/issues/8",
+              labels: [{ name: "bug" }],
+              createdAt: "2026-03-31T00:00:00Z",
+              commentsCount: 1,
+              assignees: [],
+            },
+          ]),
+        }),
+      )
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify({
+            reactions: {
+              "+1": 0,
+              laugh: 0,
+              hooray: 0,
+              heart: 0,
+              rocket: 0,
+              eyes: 0,
+            },
+          }),
+        }),
+      );
 
     const client = new GitHubClient();
-    await client.searchIssues("owner/repo", {
+    const opts = {
       labels: ["bug"],
       limit: 2,
-    });
+    };
+    const result = await client.searchIssues("owner/repo", opts);
 
-    expect(spawnMock).toHaveBeenCalledWith({
+    expect(result).toHaveLength(1);
+    expect(spawnMock).toHaveBeenNthCalledWith(1, {
       cmd: [
         "gh",
         "search",
@@ -317,7 +386,7 @@ describe("GitHubClient", () => {
         "--repo",
         "owner/repo",
         "--label",
-        "good first issue",
+        opts.labels[0],
         "--state",
         "open",
         "--json",
@@ -328,6 +397,124 @@ describe("GitHubClient", () => {
       stdout: "pipe",
       stderr: "pipe",
     });
+    expect(spawnMock).toHaveBeenNthCalledWith(2, {
+      cmd: ["gh", "api", "repos/owner/repo/issues/8"],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  });
+
+  it("searchIssues deduplicates issues with same number across label searches", async () => {
+    spawnMock
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify([
+            {
+              number: 42,
+              title: "Fix typing issue",
+              body: "Details",
+              url: "https://github.com/owner/repo/issues/42",
+              labels: [{ name: "good first issue" }],
+              createdAt: "2026-03-31T00:00:00Z",
+              commentsCount: 2,
+              assignees: [],
+            },
+          ]),
+        }),
+      )
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify([
+            {
+              number: 42,
+              title: "Fix typing issue",
+              body: "Details",
+              url: "https://github.com/owner/repo/issues/42",
+              labels: [{ name: "bug" }],
+              createdAt: "2026-03-31T00:00:00Z",
+              commentsCount: 2,
+              assignees: [],
+            },
+          ]),
+        }),
+      )
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify({
+            reactions: {
+              "+1": 0,
+              laugh: 0,
+              hooray: 0,
+              heart: 0,
+              rocket: 0,
+              eyes: 0,
+            },
+          }),
+        }),
+      );
+
+    const client = new GitHubClient();
+    const opts = {
+      labels: ["good first issue", "bug"],
+      limit: 5,
+    };
+    const result = await client.searchIssues("owner/repo", opts);
+
+    expect(result).toHaveLength(1);
+    expect(spawnMock).toHaveBeenCalledTimes(3);
+    expect(spawnMock).toHaveBeenNthCalledWith(1, {
+      cmd: [
+        "gh",
+        "search",
+        "issues",
+        "--repo",
+        "owner/repo",
+        "--label",
+        opts.labels[0],
+        "--state",
+        "open",
+        "--json",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
+        "--limit",
+        "5",
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(spawnMock).toHaveBeenNthCalledWith(2, {
+      cmd: [
+        "gh",
+        "search",
+        "issues",
+        "--repo",
+        "owner/repo",
+        "--label",
+        opts.labels[1],
+        "--state",
+        "open",
+        "--json",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
+        "--limit",
+        "5",
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(spawnMock).toHaveBeenNthCalledWith(3, {
+      cmd: ["gh", "api", "repos/owner/repo/issues/42"],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const reactionCalls = spawnMock.mock.calls.filter((call) => {
+      const firstArg = call[0];
+      if (typeof firstArg !== "object" || firstArg === null || !("cmd" in firstArg)) {
+        return false;
+      }
+      const cmd = firstArg.cmd;
+      return Array.isArray(cmd) && cmd[0] === "gh" && cmd[1] === "api";
+    });
+    expect(reactionCalls).toHaveLength(1);
   });
 
   it("searchIssues falls back to comments-only metrics when issue detail lookup fails", async () => {

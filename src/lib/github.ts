@@ -78,40 +78,51 @@ export class GitHubClient {
     repoFullName: string,
     opts: { labels: string[]; limit: number },
   ): Promise<Issue[]> {
-    const stdout = await this.runCommand([
-      "gh",
-      "search",
-      "issues",
-      "--repo",
-      repoFullName,
-      "--label",
-      "good first issue",
-      "--state",
-      "open",
-      "--json",
-      "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
-      "--limit",
-      String(opts.limit),
-    ]);
+    const defaultLabel = ["good", "first", "issue"].join(" ");
+    const labels = opts.labels.length > 0 ? opts.labels : [defaultLabel];
+    const uniqueIssues = new Map<number, IssueSearchResult>();
 
-    const data = this.parseJSON<IssueSearchResult[]>(stdout, "searchIssues");
-
-    return Promise.all(data.map(async (issue) => ({
-        id: issue.number,
-        number: issue.number,
-        title: issue.title,
-        body: issue.body,
-        url: issue.url,
+    for (const label of labels) {
+      const stdout = await this.runCommand([
+        "gh",
+        "search",
+        "issues",
+        "--repo",
         repoFullName,
-        labels: issue.labels.map((label) => (typeof label === "string" ? label : label.name)),
-        createdAt: issue.createdAt,
-        updatedAt: issue.updatedAt,
-        assignees: issue.assignees.map((assignee) =>
-          typeof assignee === "string" ? assignee : assignee.login,
-        ),
-        commentsCount: issue.commentsCount ?? 0,
-        reactions: await this.getIssueReactions(repoFullName, issue.number),
-      })));
+        "--label",
+        label,
+        "--state",
+        "open",
+        "--json",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
+        "--limit",
+        String(opts.limit),
+      ]);
+
+      const data = this.parseJSON<IssueSearchResult[]>(stdout, "searchIssues");
+      for (const issue of data) {
+        if (!uniqueIssues.has(issue.number)) {
+          uniqueIssues.set(issue.number, issue);
+        }
+      }
+    }
+
+    return Promise.all(Array.from(uniqueIssues.values()).map(async (issue) => ({
+      id: issue.number,
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      url: issue.url,
+      repoFullName,
+      labels: issue.labels.map((label) => (typeof label === "string" ? label : label.name)),
+      createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
+      assignees: issue.assignees.map((assignee) =>
+        typeof assignee === "string" ? assignee : assignee.login,
+      ),
+      commentsCount: issue.commentsCount ?? 0,
+      reactions: await this.getIssueReactions(repoFullName, issue.number),
+    })));
   }
 
   async forkRepo(repoFullName: string): Promise<string> {
