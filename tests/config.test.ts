@@ -26,7 +26,9 @@ describe("loadConfig", () => {
     const config = await loadConfig();
 
     expect(config).toEqual({
+      aiProvider: "anthropic",
       anthropicApiKey: "anthropic-key",
+      openaiModel: "gpt-5-mini",
       minStars: 50,
       maxPRsPerDay: 5,
       maxPRsPerRepo: 1,
@@ -41,6 +43,8 @@ describe("loadConfig", () => {
 
     const config = await loadConfig();
 
+    expect(config.aiProvider).toBe("anthropic");
+    expect(config.openaiModel).toBe("gpt-5-mini");
     expect(config.oauthToken).toBe("sk-ant-oat01-test-token");
     expect(config.anthropicApiKey).toBeUndefined();
     expect(config.minStars).toBe(50);
@@ -68,6 +72,8 @@ describe("loadConfig", () => {
     await Bun.write(
       join(homeDir, ".gittributorrc.json"),
       JSON.stringify({
+        aiProvider: "openai",
+        openaiModel: "gpt-5-mini",
         minStars: 150,
         maxPRsPerDay: 2,
         maxPRsPerRepo: 3,
@@ -78,6 +84,8 @@ describe("loadConfig", () => {
 
     const config = await loadConfig();
 
+    expect(config.aiProvider).toBe("openai");
+    expect(config.openaiModel).toBe("gpt-5-mini");
     expect(config.minStars).toBe(150);
     expect(config.maxPRsPerDay).toBe(2);
     expect(config.maxPRsPerRepo).toBe(3);
@@ -91,11 +99,27 @@ describe("loadConfig", () => {
 
     const config = await loadConfig();
 
+    expect(config.aiProvider).toBe("anthropic");
+    expect(config.openaiModel).toBe("gpt-5-mini");
     expect(config.oauthToken).toBeUndefined();
     expect(config.anthropicApiKey).toBeUndefined();
     expect(config.minStars).toBe(50);
     expect(config.maxPRsPerDay).toBe(5);
     expect(config.maxPRsPerRepo).toBe(1);
     expect(config.targetLanguages).toEqual(["typescript", "javascript", "python"]);
+  });
+
+  test("loads OpenAI OAuth and provider from env", async () => {
+    delete Bun.env.ANTHROPIC_API_KEY;
+    delete Bun.env.CLAUDE_CODE_OAUTH_TOKEN;
+    Bun.env.GITTRIBUTOR_AI_PROVIDER = "openai";
+    Bun.env.OPENAI_OAUTH_TOKEN = "sess-openai-test";
+    Bun.env.OPENAI_MODEL = "gpt-5-mini";
+
+    const config = await loadConfig();
+
+    expect(config.aiProvider).toBe("openai");
+    expect(config.openaiOauthToken).toBe("sess-openai-test");
+    expect(config.openaiModel).toBe("gpt-5-mini");
   });
 });

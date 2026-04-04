@@ -30,6 +30,14 @@ function buildCliPrompt(system: string, prompt: string): string {
   return `[SYSTEM]\n${system}\n\n[USER]\n${prompt}`;
 }
 
+async function readSubprocessPipe(pipe: Bun.Subprocess["stdout"] | Bun.Subprocess["stderr"]): Promise<string> {
+  if (!pipe || typeof pipe === "number") {
+    return "";
+  }
+
+  return new Response(pipe).text();
+}
+
 export async function callAnthropic(options: {
   apiKey?: string;
   oauthToken?: string;
@@ -64,8 +72,8 @@ export async function callAnthropic(options: {
   let exitCode = 0;
   try {
     const [nextStdout, nextStderr, nextExitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      readSubprocessPipe(proc.stdout),
+      readSubprocessPipe(proc.stderr),
       proc.exited,
     ]);
     stdout = nextStdout;

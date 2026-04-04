@@ -49,9 +49,11 @@ interface ParsedGlobalArgs {
 type SupportedCommand = "analyze" | "discover" | "fix" | "help" | "review" | "submit" | "run";
 
 interface ConfigOverrides {
+  aiProvider?: "anthropic" | "openai";
   maxPRsPerDay?: number;
   maxPRsPerRepo?: number;
   minStars?: number;
+  openaiModel?: string;
   targetLanguages?: string[];
   verbose?: boolean;
 }
@@ -217,6 +219,13 @@ const parseConfigOverrides = (value: unknown, configPath: string): ConfigOverrid
 
   const configOverrides: ConfigOverrides = {};
 
+  if (value.aiProvider !== undefined) {
+    if (value.aiProvider !== "anthropic" && value.aiProvider !== "openai") {
+      throw new ConfigError(`aiProvider in ${configPath} must be 'anthropic' or 'openai'`);
+    }
+    configOverrides.aiProvider = value.aiProvider;
+  }
+
   if (value.minStars !== undefined) {
     if (typeof value.minStars !== "number") {
       throw new ConfigError(`minStars in ${configPath} must be a number`);
@@ -252,6 +261,13 @@ const parseConfigOverrides = (value: unknown, configPath: string): ConfigOverrid
       throw new ConfigError(`verbose in ${configPath} must be a boolean`);
     }
     configOverrides.verbose = value.verbose;
+  }
+
+  if (value.openaiModel !== undefined) {
+    if (typeof value.openaiModel !== "string" || value.openaiModel.trim().length === 0) {
+      throw new ConfigError(`openaiModel in ${configPath} must be a non-empty string`);
+    }
+    configOverrides.openaiModel = value.openaiModel.trim();
   }
 
   return configOverrides;
@@ -291,6 +307,25 @@ const resolveRuntimeConfig = async (globalFlags: GlobalFlags): Promise<Config> =
 
   if (runtimeConfig.verbose) {
     process.env.VERBOSE = "true";
+  }
+
+  if (runtimeConfig.aiProvider) {
+    process.env.GITTRIBUTOR_AI_PROVIDER = runtimeConfig.aiProvider;
+  }
+  if (runtimeConfig.openaiModel) {
+    process.env.OPENAI_MODEL = runtimeConfig.openaiModel;
+  }
+  if (runtimeConfig.openaiApiKey) {
+    process.env.OPENAI_API_KEY = runtimeConfig.openaiApiKey;
+  }
+  if (runtimeConfig.openaiOauthToken) {
+    process.env.OPENAI_OAUTH_TOKEN = runtimeConfig.openaiOauthToken;
+  }
+  if (runtimeConfig.anthropicApiKey) {
+    process.env.ANTHROPIC_API_KEY = runtimeConfig.anthropicApiKey;
+  }
+  if (runtimeConfig.oauthToken) {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = runtimeConfig.oauthToken;
   }
 
   return runtimeConfig;

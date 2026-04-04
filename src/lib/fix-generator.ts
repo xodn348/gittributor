@@ -1,7 +1,8 @@
 import { mkdirSync } from "fs";
 import { join } from "path";
 import type { AnalysisResult, Issue, Repository } from "../types/index";
-import { AnthropicAPIError, callAnthropic } from "./anthropic";
+import { callModel } from "./ai";
+import { AnthropicAPIError, OpenAIAPIError } from "./errors";
 import { FixValidationError } from "./errors";
 
 export interface FixChange {
@@ -29,9 +30,19 @@ interface ParsedFixPayload {
   confidence: unknown;
 }
 
-const MAX_FIX_TOKENS = 2048;
+const parsePositiveIntegerEnv = (name: string, fallback: number): number => {
+  const raw = Bun.env[name]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const MAX_FIX_TOKENS = parsePositiveIntegerEnv("GITTRIBUTOR_FIX_MAX_TOKENS", 1024);
 const DEFAULT_CONFIDENCE = 0.5;
-const MAX_PROMPT_FILE_LINES = 150;
+const MAX_PROMPT_FILE_LINES = parsePositiveIntegerEnv("GITTRIBUTOR_FIX_MAX_PROMPT_FILE_LINES", 90);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -131,7 +142,7 @@ function truncatePromptSnippet(content: string): string {
     return content;
   }
 
-  return `${lines.slice(0, MAX_PROMPT_FILE_LINES).join("\n")}\n// [...truncated at 150 lines for fix prompt...]`;
+  return `${lines.slice(0, MAX_PROMPT_FILE_LINES).join("\n")}\n// [...truncated at ${MAX_PROMPT_FILE_LINES} lines for fix prompt...]`;
 }
 
 function buildFileContentsSection(analysis: AnalysisResult): string {
@@ -212,15 +223,17 @@ export async function generateFix(
 
   let responseText: string;
   try {
-    responseText = await callAnthropic({
-      apiKey: Bun.env.ANTHROPIC_API_KEY?.trim(),
-      oauthToken: Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
+    responseText = await callModel({
+      provider: Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim() === "openai" ? "openai" : "anthropic",
+      apiKey: Bun.env.OPENAI_API_KEY?.trim() ?? Bun.env.ANTHROPIC_API_KEY?.trim(),
+      oauthToken: Bun.env.OPENAI_OAUTH_TOKEN?.trim() ?? Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
+      model: Bun.env.OPENAI_MODEL?.trim(),
       system,
       prompt,
       maxTokens: MAX_FIX_TOKENS,
     });
   } catch (error) {
-    if (error instanceof AnthropicAPIError) {
+    if (error instanceof AnthropicAPIError || error instanceof OpenAIAPIError) {
       throw new Error(`Failed to generate fix: API error (${error.statusCode ?? "unknown"})`);
     }
 

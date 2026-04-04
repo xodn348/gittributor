@@ -94,8 +94,12 @@ export interface PipelineState {
 }
 
 export interface Config {
+  aiProvider?: "anthropic" | "openai";
   anthropicApiKey?: string;
   oauthToken?: string;
+  openaiApiKey?: string;
+  openaiOauthToken?: string;
+  openaiModel?: string;
   minStars: number;
   maxPRsPerDay: number;
   maxPRsPerRepo: number;

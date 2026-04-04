@@ -380,7 +380,11 @@ describe("isConfig", () => {
 
   test("returns true for valid config", () => {
     const value = {
+      aiProvider: "openai",
       anthropicApiKey: "key",
+      openaiApiKey: "ok",
+      openaiOauthToken: "sess",
+      openaiModel: "gpt-5-mini",
       minStars: 50,
       maxPRsPerDay: 5,
       maxPRsPerRepo: 1,
@@ -405,6 +409,7 @@ describe("isConfig", () => {
 
   test("returns false when field has wrong type", () => {
     const value = {
+      aiProvider: "codex",
       anthropicApiKey: "key",
       minStars: 50,
       maxPRsPerDay: 5,

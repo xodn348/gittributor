@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
-import { callAnthropic } from "./anthropic";
+import { callModel } from "./ai";
 import { GitHubAPIError, GittributorError } from "./errors";
 import { warn } from "./logger";
 import type { AnalysisResult, Issue, Repository } from "../types/index";
@@ -25,11 +25,21 @@ class AnalyzerError extends GittributorError {
   }
 }
 
-const MAX_ANALYZED_FILES = 5;
-const MAX_LINES_PER_FILE = 500;
+const parsePositiveIntegerEnv = (name: string, fallback: number): number => {
+  const raw = Bun.env[name]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const MAX_ANALYZED_FILES = parsePositiveIntegerEnv("GITTRIBUTOR_ANALYZER_MAX_FILES", 3);
+const MAX_LINES_PER_FILE = parsePositiveIntegerEnv("GITTRIBUTOR_ANALYZER_MAX_LINES_PER_FILE", 250);
 const MAX_REPO_SIZE_KB = 102400;
 const MAX_PERSISTED_FILE_CONTENT_BYTES = 50 * 1024;
-const ANALYZER_MAX_TOKENS = 1024;
+const ANALYZER_MAX_TOKENS = parsePositiveIntegerEnv("GITTRIBUTOR_ANALYZER_MAX_TOKENS", 700);
 const SUPPORTED_SOURCE_EXTENSION_PATTERN =
   /\.(ts|tsx|js|jsx|mjs|cjs|py|go|java|rb|rs|c|cpp|cs|php|swift|kt)$/;
 const FILE_MENTION_PATTERN =
@@ -189,7 +199,7 @@ function truncateFileByLines(filePath: string): string {
     return lines.join("\n");
   }
 
-  return `${lines.slice(0, MAX_LINES_PER_FILE).join("\n")}\n// [...truncated at 500 lines...]`;
+  return `${lines.slice(0, MAX_LINES_PER_FILE).join("\n")}\n// [...truncated at ${MAX_LINES_PER_FILE} lines...]`;
 }
 
 function buildAnalysisPrompt(
@@ -274,9 +284,11 @@ async function requestAnalysis(
       truncateFileByLines(path.join(repoPath, relativeFilePath)),
     ]),
   );
-  const responseText = await callAnthropic({
-    apiKey: Bun.env.ANTHROPIC_API_KEY?.trim(),
-    oauthToken: Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
+  const responseText = await callModel({
+    provider: Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim() === "openai" ? "openai" : "anthropic",
+    apiKey: Bun.env.OPENAI_API_KEY?.trim() ?? Bun.env.ANTHROPIC_API_KEY?.trim(),
+    oauthToken: Bun.env.OPENAI_OAUTH_TOKEN?.trim() ?? Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
+    model: Bun.env.OPENAI_MODEL?.trim(),
     system: ANALYZER_SYSTEM_PROMPT,
     prompt,
     maxTokens: ANALYZER_MAX_TOKENS,

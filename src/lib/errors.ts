@@ -35,6 +35,16 @@ export class AnthropicAPIError extends GittributorError {
   }
 }
 
+export class OpenAIAPIError extends GittributorError {
+  statusCode?: number;
+
+  constructor(message: string, statusCode?: number) {
+    super(message, "OPENAI_API_ERROR");
+    this.name = "OpenAIAPIError";
+    this.statusCode = statusCode;
+  }
+}
+
 export class RateLimitError extends GittributorError {
   retryAfter?: number;
 

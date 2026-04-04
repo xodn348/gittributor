@@ -151,10 +151,22 @@ export const isConfig = (value: unknown): value is Config => {
     value.anthropicApiKey === undefined || typeof value.anthropicApiKey === "string";
   const hasValidOauthToken =
     value.oauthToken === undefined || typeof value.oauthToken === "string";
+  const hasValidAiProvider =
+    value.aiProvider === undefined || value.aiProvider === "anthropic" || value.aiProvider === "openai";
+  const hasValidOpenAIApiKey =
+    value.openaiApiKey === undefined || typeof value.openaiApiKey === "string";
+  const hasValidOpenAIOauthToken =
+    value.openaiOauthToken === undefined || typeof value.openaiOauthToken === "string";
+  const hasValidOpenAIModel =
+    value.openaiModel === undefined || typeof value.openaiModel === "string";
 
   return (
+    hasValidAiProvider &&
     hasValidApiKey &&
     hasValidOauthToken &&
+    hasValidOpenAIApiKey &&
+    hasValidOpenAIOauthToken &&
+    hasValidOpenAIModel &&
     typeof value.minStars === "number" &&
     typeof value.maxPRsPerDay === "number" &&
     typeof value.maxPRsPerRepo === "number" &&

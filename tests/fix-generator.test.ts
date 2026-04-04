@@ -4,40 +4,23 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "path";
 import type { AnalysisResult, Issue, Repository } from "../src/types/index";
-import { FixValidationError as SharedFixValidationError } from "../src/lib/errors";
+import { FixValidationError as SharedFixValidationError, OpenAIAPIError } from "../src/lib/errors";
 import { acquireGlobalTestLock } from "./helpers/global-test-lock";
-import {
-  callAnthropic as _callAnthropicBinding,
-  analyzeCodeForIssue as _analyzeCodeForIssueBinding,
-  createPRDescription as _createPRDescriptionBinding,
-  generateFix as _anthropicGenerateFixBinding,
-  AnthropicAPIError as _anthropicApiErrorBinding,
-  RateLimitError as _rateLimitErrorBinding,
-} from "../src/lib/anthropic";
+import { callModel as _callModelBinding } from "../src/lib/ai";
 
-const _realCallAnthropic = _callAnthropicBinding;
-const _realAnalyzeCodeForIssue = _analyzeCodeForIssueBinding;
-const _realCreatePRDescription = _createPRDescriptionBinding;
-const _realAnthropicGenerateFix = _anthropicGenerateFixBinding;
-const _RealAnthropicAPIError = _anthropicApiErrorBinding;
-const _RealRateLimitError = _rateLimitErrorBinding;
+const _realCallModel = _callModelBinding;
 
-let _currentCallAnthropicImpl: (options: {
+let _currentCallModelImpl: (options: {
   apiKey: string;
   system: string;
   prompt: string;
   maxTokens: number;
-}) => Promise<string> = _realCallAnthropic;
+}) => Promise<string> = _realCallModel;
 
-const establishAnthropicMock = (): void => {
-  mock.module("../src/lib/anthropic", () => ({
-    callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
-      _currentCallAnthropicImpl(options),
-    analyzeCodeForIssue: _realAnalyzeCodeForIssue,
-    createPRDescription: _realCreatePRDescription,
-    generateFix: _realAnthropicGenerateFix,
-    AnthropicAPIError: _RealAnthropicAPIError,
-    RateLimitError: _RealRateLimitError,
+const establishModelMock = (): void => {
+  mock.module("../src/lib/ai", () => ({
+    callModel: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
+      _currentCallModelImpl(options),
   }));
 };
 
@@ -83,10 +66,10 @@ const analysisFixture: AnalysisResult = {
 
 let fixGeneratorModuleLoadCounter = 0;
 
-function loadFixGeneratorWithAnthropicMock(
+function loadFixGeneratorWithModelMock(
   impl: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) => Promise<string>,
 ): Promise<typeof import("../src/lib/fix-generator")> {
-  _currentCallAnthropicImpl = impl;
+  _currentCallModelImpl = impl;
   fixGeneratorModuleLoadCounter += 1;
   return import(`../src/lib/fix-generator.ts?cacheBust=${fixGeneratorModuleLoadCounter}`);
 }
@@ -98,7 +81,7 @@ describe("fix-generator", () => {
 
   beforeEach(async () => {
     releaseGlobalLock = await acquireGlobalTestLock();
-    establishAnthropicMock();
+    establishModelMock();
     previousCwd = process.cwd();
     tempDir = await mkdtemp(path.join(tmpdir(), "gittributor-fix-generator-"));
     process.chdir(tempDir);
@@ -107,9 +90,9 @@ describe("fix-generator", () => {
   afterEach(async () => {
     process.chdir(previousCwd);
     await rm(tempDir, { recursive: true, force: true });
-    _currentCallAnthropicImpl = _realCallAnthropic;
+    _currentCallModelImpl = _realCallModel;
     mock.restore();
-    establishAnthropicMock();
+    establishModelMock();
     releaseGlobalLock?.();
     releaseGlobalLock = null;
   });
@@ -118,7 +101,7 @@ describe("fix-generator", () => {
     let capturedPrompt = "";
     let capturedSystem = "";
 
-    const { generateFix } = await loadFixGeneratorWithAnthropicMock(async (options) => {
+    const { generateFix } = await loadFixGeneratorWithModelMock(async (options) => {
       capturedPrompt = options.prompt;
       capturedSystem = options.system;
 
@@ -182,7 +165,7 @@ describe("fix-generator", () => {
   });
 
   it("rejects out-of-scope file edits with FixValidationError mentioning out of scope", async () => {
-    const { generateFix } = await loadFixGeneratorWithAnthropicMock(async () => {
+    const { generateFix } = await loadFixGeneratorWithModelMock(async () => {
       return JSON.stringify({
         changes: [
           {
@@ -208,9 +191,9 @@ describe("fix-generator", () => {
 
   it("fails fast on Anthropic API errors with required message and no retry", async () => {
     let callCount = 0;
-    const { generateFix } = await loadFixGeneratorWithAnthropicMock(async () => {
+    const { generateFix } = await loadFixGeneratorWithModelMock(async () => {
       callCount += 1;
-      throw new _RealAnthropicAPIError("server failure", 500);
+      throw new OpenAIAPIError("server failure", 500);
     });
 
     try {
@@ -225,7 +208,7 @@ describe("fix-generator", () => {
   });
 
   it("rejects changes with empty file content fields before persisting", async () => {
-    const { generateFix } = await loadFixGeneratorWithAnthropicMock(async () => {
+    const { generateFix } = await loadFixGeneratorWithModelMock(async () => {
       return JSON.stringify({
         changes: [
           {
@@ -251,7 +234,7 @@ describe("fix-generator", () => {
   });
 
   it("persists generated fix JSON payload with changes, explanation, and confidence", async () => {
-    const { generateFix } = await loadFixGeneratorWithAnthropicMock(async () => {
+    const { generateFix } = await loadFixGeneratorWithModelMock(async () => {
       return JSON.stringify({
         changes: [
           {
@@ -283,7 +266,7 @@ describe("fix-generator", () => {
   });
 
   it("rejects malformed change entries instead of blanking file fields", async () => {
-    const { generateFix } = await loadFixGeneratorWithAnthropicMock(async () => {
+    const { generateFix } = await loadFixGeneratorWithModelMock(async () => {
       return JSON.stringify({
         changes: [
           {
@@ -305,11 +288,11 @@ describe("fix-generator", () => {
     }
   });
 
-  it("truncates file content snippets to 150 lines before adding them to the prompt", async () => {
+  it("truncates file content snippets to 90 lines before adding them to the prompt", async () => {
     const longContent = Array.from({ length: 180 }, (_, index) => `line ${index}`).join("\n");
     let capturedPrompt = "";
 
-    const { generateFix } = await loadFixGeneratorWithAnthropicMock(async (options) => {
+    const { generateFix } = await loadFixGeneratorWithModelMock(async (options) => {
       capturedPrompt = options.prompt;
       return JSON.stringify({
         changes: [
@@ -335,8 +318,8 @@ describe("fix-generator", () => {
       repoFixture,
     );
 
-    expect(capturedPrompt).toContain("line 149");
-    expect(capturedPrompt).not.toContain("line 150");
-    expect(capturedPrompt).toContain("truncated at 150 lines");
+    expect(capturedPrompt).toContain("line 89");
+    expect(capturedPrompt).not.toContain("line 90");
+    expect(capturedPrompt).toContain("truncated at 90 lines");
   });
 });

@@ -5,21 +5,9 @@ import { tmpdir } from "node:os";
 import path from "path";
 import type { Issue, Repository } from "../src/types/index";
 import { acquireGlobalTestLock } from "./helpers/global-test-lock";
-import {
-  callAnthropic as _callAnthropicBinding,
-  analyzeCodeForIssue as _analyzeCodeForIssueBinding,
-  createPRDescription as _createPRDescriptionBinding,
-  generateFix as _generateFixBinding,
-  AnthropicAPIError as _anthropicApiErrorBinding,
-  RateLimitError as _rateLimitErrorBinding,
-} from "../src/lib/anthropic";
+import { callModel as _callModelBinding } from "../src/lib/ai";
 
-const _realCallAnthropic = _callAnthropicBinding;
-const _realAnalyzeCodeForIssue = _analyzeCodeForIssueBinding;
-const _realCreatePRDescription = _createPRDescriptionBinding;
-const _realGenerateFix = _generateFixBinding;
-const _realAnthropicApiError = _anthropicApiErrorBinding;
-const _realRateLimitError = _rateLimitErrorBinding;
+const _realCallModel = _callModelBinding;
 
 type AnalyzerAnthropicResponse = {
   rootCause: string;
@@ -29,22 +17,17 @@ type AnalyzerAnthropicResponse = {
   confidence: number;
 };
 
-let currentCallAnthropicImpl: (options: {
+let currentCallModelImpl: (options: {
   apiKey: string;
   system: string;
   prompt: string;
   maxTokens: number;
-}) => Promise<string> = _realCallAnthropic;
+}) => Promise<string> = _realCallModel;
 
-const establishAnthropicMock = (): void => {
-  mock.module("../src/lib/anthropic", () => ({
-    callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
-      currentCallAnthropicImpl(options),
-    analyzeCodeForIssue: _realAnalyzeCodeForIssue,
-    createPRDescription: _realCreatePRDescription,
-    generateFix: _realGenerateFix,
-    AnthropicAPIError: _realAnthropicApiError,
-    RateLimitError: _realRateLimitError,
+const establishModelMock = (): void => {
+  mock.module("../src/lib/ai", () => ({
+    callModel: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
+      currentCallModelImpl(options),
   }));
 };
 
@@ -103,7 +86,7 @@ const anthropicResponseFixture: AnalyzerAnthropicResponse = {
 
 let analyzerModuleLoadCounter = 0;
 
-function loadAnalyzerWithAnthropicMock(
+function loadAnalyzerWithModelMock(
   implementation: (options: {
     apiKey: string;
     system: string;
@@ -111,7 +94,7 @@ function loadAnalyzerWithAnthropicMock(
     maxTokens: number;
   }) => Promise<string>,
 ): Promise<typeof import("../src/lib/analyzer")> {
-  currentCallAnthropicImpl = implementation;
+  currentCallModelImpl = implementation;
   analyzerModuleLoadCounter += 1;
   return import(`../src/lib/analyzer.ts?cacheBust=${analyzerModuleLoadCounter}`);
 }
@@ -125,7 +108,7 @@ describe("analyzeCodebase", () => {
 
   beforeEach(async () => {
     releaseGlobalLock = await acquireGlobalTestLock();
-    establishAnthropicMock();
+    establishModelMock();
     previousCwd = process.cwd();
     workspaceTempDir = await mkdtemp(path.join(tmpdir(), "gittributor-analyzer-test-"));
     process.chdir(workspaceTempDir);
@@ -139,15 +122,15 @@ describe("analyzeCodebase", () => {
   afterEach(async () => {
     process.chdir(previousCwd);
     await rm(workspaceTempDir, { recursive: true, force: true });
-    currentCallAnthropicImpl = _realCallAnthropic;
+    currentCallModelImpl = _realCallModel;
     mock.restore();
-    establishAnthropicMock();
+    establishModelMock();
     releaseGlobalLock?.();
     releaseGlobalLock = null;
   });
 
   it("skips cloning repositories larger than 100MB and returns a warning analysis", async () => {
-    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async () => {
+    const { analyzeCodebase } = await loadAnalyzerWithModelMock(async () => {
       throw new Error("Anthropic should not be called for oversized repositories");
     });
 
@@ -184,7 +167,12 @@ describe("analyzeCodebase", () => {
     let capturedSystem = "";
     let capturedPrompt = "";
 
-    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async (options) => {
+    const { analyzeCodebase } = await loadAnalyzerWithModelMock(async (options: {
+      apiKey: string;
+      system: string;
+      prompt: string;
+      maxTokens: number;
+    }) => {
       capturedSystem = options.system;
       capturedPrompt = options.prompt;
       return JSON.stringify(anthropicResponseFixture);
@@ -237,7 +225,7 @@ describe("analyzeCodebase", () => {
     expect(capturedPrompt).toContain(repositoryFixture.fullName);
     expect(capturedPrompt).toContain("File: src/parser.ts");
     expect(capturedPrompt).toContain("File: src/api/client.ts");
-    expect(capturedPrompt.match(/^File: /gm)?.length).toBe(5);
+    expect(capturedPrompt.match(/^File: /gm)?.length).toBe(3);
     expect(capturedPrompt).not.toContain("File: src/utils/d.ts");
 
     expect(result).toMatchObject({
@@ -262,14 +250,14 @@ describe("analyzeCodebase", () => {
   });
 
   it("omits fileContents from persisted analysis when they would exceed 50KB", async () => {
-    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async () => {
+    const { analyzeCodebase } = await loadAnalyzerWithModelMock(async () => {
       return JSON.stringify({
         ...anthropicResponseFixture,
         affectedFiles: ["src/parser.ts"],
       });
     });
 
-    const oversizedFileContents = Array.from({ length: 500 }, (_, index) => `${index}: ${"x".repeat(180)}`).join(
+    const oversizedFileContents = Array.from({ length: 500 }, (_, index) => `${index}: ${"x".repeat(260)}`).join(
       "\n",
     );
 
@@ -294,13 +282,18 @@ describe("analyzeCodebase", () => {
     expect(persisted.fileContents).toBeUndefined();
   });
 
-  it("truncates analyzed files to 500 lines and appends the truncation marker", async () => {
+  it("truncates analyzed files to 250 lines and appends the truncation marker", async () => {
     const longFileLines = Array.from({ length: 520 }, (_, index) => `const value${index} = ${index};`).join(
       "\n",
     );
 
-    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async (options) => {
-      expect(options.prompt).toContain("// [...truncated at 500 lines...]");
+    const { analyzeCodebase } = await loadAnalyzerWithModelMock(async (options: {
+      apiKey: string;
+      system: string;
+      prompt: string;
+      maxTokens: number;
+    }) => {
+      expect(options.prompt).toContain("// [...truncated at 250 lines...]");
       expect(options.prompt).not.toContain("const value519 = 519;");
       return JSON.stringify(anthropicResponseFixture);
     });
@@ -322,7 +315,7 @@ describe("analyzeCodebase", () => {
   });
 
   it("removes the temp clone directory when Anthropic analysis fails", async () => {
-    const { analyzeCodebase } = await loadAnalyzerWithAnthropicMock(async () => {
+    const { analyzeCodebase } = await loadAnalyzerWithModelMock(async () => {
       throw new Error("analysis failed");
     });
 
