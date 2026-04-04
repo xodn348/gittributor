@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PipelineState, Repository } from "../src/types";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -13,6 +14,10 @@ interface CliRunResult {
 
 interface RunCliOptions {
   env?: Record<string, string | undefined>;
+}
+
+interface PersistedPipelineStateLike extends PipelineState {
+  data: Record<string, unknown>;
 }
 
 const escapeShellArgument = (value: string): string => {
@@ -146,7 +151,7 @@ const createRepository = (name: string): Repository => {
   };
 };
 
-const createState = (repositories: Repository[]): PipelineState => {
+const createState = (repositories: Repository[]): PersistedPipelineStateLike => {
   return {
     version: "1.0.0",
     status: "discovered",
@@ -156,40 +161,22 @@ const createState = (repositories: Repository[]): PipelineState => {
     fixes: {},
     submissions: [],
     lastUpdated: "2026-04-01T00:00:00.000Z",
+    data: {},
   };
-};
-
-let importNonce = 0;
-
-const nextImportNonce = (): number => {
-  importNonce += 1;
-  return importNonce;
 };
 
 describe("runCli analyze command repository fallback (RED)", () => {
-  afterEach(() => {
-    mock.restore();
+  let releaseGlobalLock: (() => void) | null = null;
+
+  beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
   });
 
-  const mockAnalyzeDependencies = async (params: {
-    loadState: () => Promise<PipelineState>;
-    saveState: (state: unknown) => Promise<void>;
-    discoverIssues: (repository: Repository) => Promise<unknown[]>;
-  }): Promise<void> => {
-    const actualStateModule = await import("../src/lib/state");
-    const actualAnalyzeModule = await import("../src/commands/analyze");
-
-    mock.module("../src/lib/state", () => ({
-      ...actualStateModule,
-      loadState: params.loadState,
-      saveState: params.saveState,
-    }));
-    mock.module("../src/commands/analyze", () => ({
-      ...actualAnalyzeModule,
-      discoverIssues: params.discoverIssues,
-      printIssueProposalTable: () => {},
-    }));
-  };
+  afterEach(() => {
+    mock.restore();
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
+  });
 
   test("skips repos with no issues and uses first repo with results", async () => {
     const repositories = [createRepository("repoA"), createRepository("repoB"), createRepository("repoC")];
@@ -226,17 +213,18 @@ describe("runCli analyze command repository fallback (RED)", () => {
       return [];
     });
 
-    await mockAnalyzeDependencies({
+    const printIssueProposalTableMock = mock((_repository: Repository, _issues: unknown[]) => {});
+    const { runAnalyzeCommand } = await import("../src/index");
+    const io = createMockIo();
+
+    const exitCode = await runAnalyzeCommand(io.io, {
       loadState: loadStateMock,
       saveState: saveStateMock,
       discoverIssues: discoverIssuesMock,
+      printIssueProposalTable: printIssueProposalTableMock,
     });
 
-    const { runCli: runCliEntry } = await import(`../src/index.ts?red-${Date.now()}-${nextImportNonce()}`);
-    const io = createMockIo();
-
-    await runCliEntry(["analyze"], { io: io.io });
-
+    expect(exitCode).toBe(0);
     expect(saveStateMock).toHaveBeenCalledTimes(1);
     expect(saveStateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -244,6 +232,10 @@ describe("runCli analyze command repository fallback (RED)", () => {
         issues: [mockIssue],
       }),
     );
+    expect(discoverIssuesMock.mock.calls.map(([repository]) => (repository as Repository).fullName)).toEqual([
+      repositories[0]!.fullName,
+      repositories[1]!.fullName,
+    ]);
   });
 
   test("throws error when all repos yield 0 issues", async () => {
@@ -252,19 +244,20 @@ describe("runCli analyze command repository fallback (RED)", () => {
     const saveStateMock = mock(async (_state: unknown) => {});
     const discoverIssuesMock = mock(async (_repository: Repository) => []);
 
-    await mockAnalyzeDependencies({
+    const printIssueProposalTableMock = mock((_repository: Repository, _issues: unknown[]) => {});
+    const { runAnalyzeCommand } = await import("../src/index");
+    const io = createMockIo();
+
+    const exitCode = await runAnalyzeCommand(io.io, {
       loadState: loadStateMock,
       saveState: saveStateMock,
       discoverIssues: discoverIssuesMock,
+      printIssueProposalTable: printIssueProposalTableMock,
     });
 
-    const { runCli: runCliEntry } = await import(`../src/index.ts?red-${Date.now()}-${nextImportNonce()}`);
-    const io = createMockIo();
-
-    const result = await runCliEntry(["analyze"], { io: io.io });
-
-    expect(result.exitCode).toBe(1);
+    expect(exitCode).toBe(1);
     expect(io.readStderr()).toContain("No issues found");
     expect(saveStateMock).not.toHaveBeenCalled();
+    expect(printIssueProposalTableMock).not.toHaveBeenCalled();
   });
 });

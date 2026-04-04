@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FileChange, RepoInfo } from "../src/types";
 import { RateLimiter, SafetyChecker, SubmissionPersistenceError } from "../src/lib/rate-limiter";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
 const readJsonWhenAvailable = async (filePath: string): Promise<unknown> => {
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -39,8 +40,10 @@ const waitForSubmissionPersistenceError = async (limiter: RateLimiter): Promise<
 describe("RateLimiter", () => {
   let tempDir: string;
   let previousCwd: string;
+  let releaseGlobalLock: (() => void) | null = null;
 
   beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
     previousCwd = process.cwd();
     tempDir = await mkdtemp(join(tmpdir(), "gittributor-rate-limiter-"));
     process.chdir(tempDir);
@@ -49,6 +52,8 @@ describe("RateLimiter", () => {
   afterEach(async () => {
     process.chdir(previousCwd);
     await rm(tempDir, { recursive: true, force: true });
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
   });
 
   test("allows first submission and blocks second submission to the same repo within 24h", () => {

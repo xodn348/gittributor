@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitHubClient } from "../src/lib/github";
 import type { Issue, Repository } from "../src/types";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
 const { buildIssueProposalTable, discoverIssues } = await import("../src/commands/analyze");
 
@@ -44,8 +45,10 @@ describe("discoverIssues", () => {
   const originalNow = Date.now;
   const originalCwd = process.cwd();
   let tempDir = "";
+  let releaseGlobalLock: (() => void) | null = null;
 
   beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
     Date.now = () => now.getTime();
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([]);
     spyOn(GitHubClient.prototype, "getFileTree").mockResolvedValue([]);
@@ -58,6 +61,8 @@ describe("discoverIssues", () => {
     process.chdir(originalCwd);
     await rm(tempDir, { recursive: true, force: true });
     mock.restore();
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
   });
 
   it("filters assigned issues", async () => {

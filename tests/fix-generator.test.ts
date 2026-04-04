@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "path";
 import type { AnalysisResult, Issue, Repository } from "../src/types/index";
 import { FixValidationError as SharedFixValidationError } from "../src/lib/errors";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 import {
   callAnthropic as _callAnthropicBinding,
   analyzeCodeForIssue as _analyzeCodeForIssueBinding,
@@ -28,15 +29,17 @@ let _currentCallAnthropicImpl: (options: {
   maxTokens: number;
 }) => Promise<string> = _realCallAnthropic;
 
-mock.module("../src/lib/anthropic", () => ({
-  callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
-    _currentCallAnthropicImpl(options),
-  analyzeCodeForIssue: _realAnalyzeCodeForIssue,
-  createPRDescription: _realCreatePRDescription,
-  generateFix: _realAnthropicGenerateFix,
-  AnthropicAPIError: _RealAnthropicAPIError,
-  RateLimitError: _RealRateLimitError,
-}));
+const establishAnthropicMock = (): void => {
+  mock.module("../src/lib/anthropic", () => ({
+    callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
+      _currentCallAnthropicImpl(options),
+    analyzeCodeForIssue: _realAnalyzeCodeForIssue,
+    createPRDescription: _realCreatePRDescription,
+    generateFix: _realAnthropicGenerateFix,
+    AnthropicAPIError: _RealAnthropicAPIError,
+    RateLimitError: _RealRateLimitError,
+  }));
+};
 
 const issueFixture: Issue = {
   id: 301,
@@ -91,8 +94,11 @@ function loadFixGeneratorWithAnthropicMock(
 describe("fix-generator", () => {
   let previousCwd = "";
   let tempDir = "";
+  let releaseGlobalLock: (() => void) | null = null;
 
   beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
+    establishAnthropicMock();
     previousCwd = process.cwd();
     tempDir = await mkdtemp(path.join(tmpdir(), "gittributor-fix-generator-"));
     process.chdir(tempDir);
@@ -103,15 +109,9 @@ describe("fix-generator", () => {
     await rm(tempDir, { recursive: true, force: true });
     _currentCallAnthropicImpl = _realCallAnthropic;
     mock.restore();
-    mock.module("../src/lib/anthropic", () => ({
-      callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
-        _currentCallAnthropicImpl(options),
-      analyzeCodeForIssue: _realAnalyzeCodeForIssue,
-      createPRDescription: _realCreatePRDescription,
-      generateFix: _realAnthropicGenerateFix,
-      AnthropicAPIError: _RealAnthropicAPIError,
-      RateLimitError: _RealRateLimitError,
-    }));
+    establishAnthropicMock();
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
   });
 
   it("generates a minimal fix, includes required prompt context, and saves .gittributor/fix.json", async () => {

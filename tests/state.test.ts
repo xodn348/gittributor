@@ -3,6 +3,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PipelineState } from "../src/types";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 import {
   InvalidTransitionError,
   getStateData,
@@ -15,8 +16,10 @@ import {
 describe("state persistence manager", () => {
   let tempDir: string;
   let previousCwd: string;
+  let releaseGlobalLock: (() => void) | null = null;
 
   beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
     previousCwd = process.cwd();
     tempDir = await mkdtemp(join(tmpdir(), "gittributor-state-"));
     process.chdir(tempDir);
@@ -25,6 +28,8 @@ describe("state persistence manager", () => {
   afterEach(async () => {
     process.chdir(previousCwd);
     await rm(tempDir, { recursive: true, force: true });
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
   });
 
   test("loadState returns idle when state file does not exist", async () => {

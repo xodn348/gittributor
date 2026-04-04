@@ -385,20 +385,37 @@ const runDiscoverCommand = async (runtimeConfig: Config, commandArgs: string[]):
   return 0;
 };
 
-const runAnalyzeCommand = async (output: CliOutput): Promise<number> => {
-  const currentState = await loadState();
+type AnalyzeDependencies = {
+  discoverIssues: typeof discoverIssues;
+  loadState: typeof loadState;
+  printIssueProposalTable: typeof printIssueProposalTable;
+  saveState: typeof saveState;
+};
+
+const defaultAnalyzeDependencies: AnalyzeDependencies = {
+  discoverIssues,
+  loadState,
+  printIssueProposalTable,
+  saveState,
+};
+
+export const runAnalyzeCommand = async (
+  output: CliOutput,
+  dependencies: AnalyzeDependencies = defaultAnalyzeDependencies,
+): Promise<number> => {
+  const currentState = await dependencies.loadState();
   selectRepositoryForAnalysis(currentState.repositories);
 
   for (const repository of currentState.repositories) {
-    const discoveredIssuesForRepository = await discoverIssues(repository);
+    const discoveredIssuesForRepository = await dependencies.discoverIssues(repository);
 
     if (discoveredIssuesForRepository.length === 0) {
       continue;
     }
 
-    printIssueProposalTable(repository, discoveredIssuesForRepository);
+    dependencies.printIssueProposalTable(repository, discoveredIssuesForRepository);
 
-    await saveState({
+    await dependencies.saveState({
       ...currentState,
       status: "analyzed",
       issues: discoveredIssuesForRepository,

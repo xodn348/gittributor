@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "path";
 import type { Issue, Repository } from "../src/types/index";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 import {
   callAnthropic as _callAnthropicBinding,
   analyzeCodeForIssue as _analyzeCodeForIssueBinding,
@@ -35,15 +36,17 @@ let currentCallAnthropicImpl: (options: {
   maxTokens: number;
 }) => Promise<string> = _realCallAnthropic;
 
-mock.module("../src/lib/anthropic", () => ({
-  callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
-    currentCallAnthropicImpl(options),
-  analyzeCodeForIssue: _realAnalyzeCodeForIssue,
-  createPRDescription: _realCreatePRDescription,
-  generateFix: _realGenerateFix,
-  AnthropicAPIError: _realAnthropicApiError,
-  RateLimitError: _realRateLimitError,
-}));
+const establishAnthropicMock = (): void => {
+  mock.module("../src/lib/anthropic", () => ({
+    callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
+      currentCallAnthropicImpl(options),
+    analyzeCodeForIssue: _realAnalyzeCodeForIssue,
+    createPRDescription: _realCreatePRDescription,
+    generateFix: _realGenerateFix,
+    AnthropicAPIError: _realAnthropicApiError,
+    RateLimitError: _realRateLimitError,
+  }));
+};
 
 function toStream(text: string): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -118,8 +121,11 @@ describe("analyzeCodebase", () => {
   let warnMock: ReturnType<typeof spyOn>;
   let previousCwd = "";
   let workspaceTempDir = "";
+  let releaseGlobalLock: (() => void) | null = null;
 
   beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
+    establishAnthropicMock();
     previousCwd = process.cwd();
     workspaceTempDir = await mkdtemp(path.join(tmpdir(), "gittributor-analyzer-test-"));
     process.chdir(workspaceTempDir);
@@ -135,15 +141,9 @@ describe("analyzeCodebase", () => {
     await rm(workspaceTempDir, { recursive: true, force: true });
     currentCallAnthropicImpl = _realCallAnthropic;
     mock.restore();
-    mock.module("../src/lib/anthropic", () => ({
-      callAnthropic: (options: { apiKey: string; system: string; prompt: string; maxTokens: number }) =>
-        currentCallAnthropicImpl(options),
-      analyzeCodeForIssue: _realAnalyzeCodeForIssue,
-      createPRDescription: _realCreatePRDescription,
-      generateFix: _realGenerateFix,
-      AnthropicAPIError: _realAnthropicApiError,
-      RateLimitError: _realRateLimitError,
-    }));
+    establishAnthropicMock();
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
   });
 
   it("skips cloning repositories larger than 100MB and returns a warning analysis", async () => {

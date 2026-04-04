@@ -3,14 +3,17 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitHubClient } from "../src/lib/github";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
 import { buildDiscoverQuery, discoverRepos } from "../src/commands/discover";
 
 describe("discoverRepos", () => {
   const cwd = process.cwd();
   let tempDir: string;
+  let releaseGlobalLock: (() => void) | null = null;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
     spyOn(GitHubClient.prototype, "searchRepositories").mockResolvedValue([]);
     tempDir = mkdtempSync(join(tmpdir(), "gittributor-discover-"));
     process.chdir(tempDir);
@@ -20,6 +23,8 @@ describe("discoverRepos", () => {
     process.chdir(cwd);
     rmSync(tempDir, { recursive: true, force: true });
     mock.restore();
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
   });
 
   test("buildDiscoverQuery applies defaults and requested filters", () => {

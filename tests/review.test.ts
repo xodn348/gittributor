@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PipelineState, PipelineStatus } from "../src/types";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 import {
   loadState as _loadStateBinding,
   saveState as _saveStateBinding,
@@ -30,8 +31,6 @@ const establishStateMock = (): void => {
       _currentTransition(from, to),
   }));
 };
-
-establishStateMock();
 
 class ControlledStdin {
   private readonly queue: string[];
@@ -125,11 +124,14 @@ const loadReviewModule = async (): Promise<typeof import("../src/commands/review
 describe("reviewFixes", () => {
   let previousCwd = "";
   let tempDir = "";
+  let releaseGlobalLock: (() => void) | null = null;
   const transitionCalls: Array<{ from: PipelineStatus; to: PipelineStatus }> = [];
   const saveStateCalls: PipelineState[] = [];
   const setStateDataCalls: Array<{ key: string; data: unknown }> = [];
 
   beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
+    establishStateMock();
     previousCwd = process.cwd();
     tempDir = await mkdtemp(join(tmpdir(), "gittributor-review-"));
     process.chdir(tempDir);
@@ -163,6 +165,8 @@ describe("reviewFixes", () => {
 
     mock.restore();
     establishStateMock();
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
   });
 
   it("approve flow transitions fixed -> reviewed and stores approved decision", async () => {

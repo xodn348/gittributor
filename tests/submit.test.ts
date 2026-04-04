@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
 interface MockProcess {
   stdout: ReadableStream<Uint8Array>;
@@ -86,8 +87,10 @@ const createReviewedState = (decision: "approved" | "rejected") => ({
 describe("submit command", () => {
   const originalCwd = process.cwd();
   let tempDir: string;
+  let releaseGlobalLock: (() => void) | null = null;
 
   beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
     tempDir = mkdtempSync(join(tmpdir(), "gittributor-submit-"));
     process.chdir(tempDir);
     await Bun.write(
@@ -114,6 +117,8 @@ describe("submit command", () => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
     mock.restore();
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
   });
 
   test("successful submission runs workflow, transitions state, and stores PR URL", async () => {
