@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { PipelineState, Repository } from "../src/types";
+import type { Config, Issue, PipelineState, Repository } from "../src/types";
+import type { ScoredIssue } from "../src/commands/analyze";
 import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -259,5 +260,142 @@ describe("runCli analyze command repository fallback (RED)", () => {
     expect(io.readStderr()).toContain("No issues found");
     expect(saveStateMock).not.toHaveBeenCalled();
     expect(printIssueProposalTableMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("runPipelineCommand oversized repository fallback", () => {
+  let releaseGlobalLock: (() => void) | null = null;
+
+  beforeEach(async () => {
+    releaseGlobalLock = await acquireGlobalTestLock();
+  });
+
+  afterEach(() => {
+    mock.restore();
+    releaseGlobalLock?.();
+    releaseGlobalLock = null;
+  });
+
+  const runtimeConfig: Config = {
+    minStars: 50,
+    maxPRsPerDay: 5,
+    maxPRsPerRepo: 1,
+    targetLanguages: ["typescript"],
+    verbose: false,
+  };
+
+  test("skips oversized repository and continues to next repository in run pipeline", async () => {
+    const repositories = [createRepository("repoA"), createRepository("repoB")];
+    const repoAIssue: ScoredIssue = {
+      id: 1,
+      number: 101,
+      title: "Repo A issue",
+      body: "issue body",
+      url: `https://github.com/${repositories[0]!.fullName}/issues/101`,
+      repoFullName: repositories[0]!.fullName,
+      labels: ["good first issue"],
+      createdAt: "2026-04-01T00:00:00.000Z",
+      assignees: [],
+      approachabilityScore: 3,
+      impactScore: 2,
+      codebaseScore: 1,
+      totalScore: 6,
+    };
+    const repoBIssue: ScoredIssue = {
+      id: 2,
+      number: 202,
+      title: "Repo B issue",
+      body: "issue body",
+      url: `https://github.com/${repositories[1]!.fullName}/issues/202`,
+      repoFullName: repositories[1]!.fullName,
+      labels: ["good first issue"],
+      createdAt: "2026-04-01T00:00:00.000Z",
+      assignees: [],
+      approachabilityScore: 4,
+      impactScore: 2,
+      codebaseScore: 1,
+      totalScore: 7,
+    };
+
+    const runDiscoverCommandMock = mock(async (_runtimeConfig: Config, _commandArgs: string[]) => 0);
+    const loadStateMock = mock(async () => createState(repositories));
+    const discoverIssuesMock = mock(async (repository: Repository) => {
+      if (repository.fullName === repositories[0]!.fullName) {
+        return [repoAIssue];
+      }
+
+      return [repoBIssue];
+    });
+    const saveStateMock = mock(async (_state: unknown) => {});
+    const runFixCommandMock = mock(async () => {
+      if (runFixCommandMock.mock.calls.length === 1) {
+        throw new Error("Cannot generate a fix for owner/repoA: automated analysis was skipped because the repository is too large.");
+      }
+
+      return 0;
+    });
+    const reviewFixMock = mock(async () => 0);
+    const submitApprovedFixMock = mock(async () => 0);
+    const printIssueProposalTableMock = mock((_repository: Repository, _issues: ScoredIssue[]) => {});
+    const writeErrorLineMock = mock((output: { stderr: { write: (chunk: string) => boolean } }, message: string) => {
+      output.stderr.write(`${message}\n`);
+    });
+
+    const { runPipelineCommand } = await import("../src/index");
+    const io = createMockIo();
+
+    const exitCode = await runPipelineCommand(runtimeConfig, [], io.io, {
+      runDiscoverCommand: runDiscoverCommandMock,
+      loadState: loadStateMock,
+      discoverIssues: discoverIssuesMock,
+      saveState: saveStateMock,
+      runFixCommand: runFixCommandMock,
+      reviewFix: reviewFixMock,
+      submitApprovedFix: submitApprovedFixMock,
+      printIssueProposalTable: printIssueProposalTableMock,
+      writeErrorLine: writeErrorLineMock,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(runFixCommandMock).toHaveBeenCalledTimes(2);
+    expect(submitApprovedFixMock).toHaveBeenCalledTimes(1);
+    expect(reviewFixMock).toHaveBeenCalledTimes(1);
+    expect(io.readStderr()).toContain("Skipping owner/repoA");
+  });
+
+  test("returns 1 when all repositories have zero fixable issues", async () => {
+    const repositories = [createRepository("repoA"), createRepository("repoB")];
+
+    const runDiscoverCommandMock = mock(async (_runtimeConfig: Config, _commandArgs: string[]) => 0);
+    const loadStateMock = mock(async () => createState(repositories));
+    const discoverIssuesMock = mock(async (_repository: Repository) => [] as ScoredIssue[]);
+    const saveStateMock = mock(async (_state: unknown) => {});
+    const runFixCommandMock = mock(async () => 0);
+    const reviewFixMock = mock(async () => 0);
+    const submitApprovedFixMock = mock(async () => 0);
+    const printIssueProposalTableMock = mock((_repository: Repository, _issues: ScoredIssue[]) => {});
+    const writeErrorLineMock = mock((output: { stderr: { write: (chunk: string) => boolean } }, message: string) => {
+      output.stderr.write(`${message}\n`);
+    });
+
+    const { runPipelineCommand } = await import("../src/index");
+    const io = createMockIo();
+
+    const exitCode = await runPipelineCommand(runtimeConfig, [], io.io, {
+      runDiscoverCommand: runDiscoverCommandMock,
+      loadState: loadStateMock,
+      discoverIssues: discoverIssuesMock,
+      saveState: saveStateMock,
+      runFixCommand: runFixCommandMock,
+      reviewFix: reviewFixMock,
+      submitApprovedFix: submitApprovedFixMock,
+      printIssueProposalTable: printIssueProposalTableMock,
+      writeErrorLine: writeErrorLineMock,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(runFixCommandMock).not.toHaveBeenCalled();
+    expect(submitApprovedFixMock).not.toHaveBeenCalled();
+    expect(io.readStderr()).toContain("No fixable issues found across all repositories.");
   });
 });

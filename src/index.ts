@@ -463,21 +463,83 @@ const runFixCommand = async (): Promise<number> => {
   return 0;
 };
 
+type PipelineDependencies = {
+  discoverIssues: typeof discoverIssues;
+  loadState: typeof loadState;
+  printIssueProposalTable: typeof printIssueProposalTable;
+  reviewFix: typeof reviewFix;
+  runDiscoverCommand: typeof runDiscoverCommand;
+  runFixCommand: typeof runFixCommand;
+  saveState: typeof saveState;
+  submitApprovedFix: typeof submitApprovedFix;
+  writeErrorLine: typeof writeErrorLine;
+};
 
-const runPipelineCommand = async (runtimeConfig: Config, commandArgs: string[], output: CliOutput): Promise<number> => {
-  const discoverResult = await runDiscoverCommand(runtimeConfig, commandArgs);
+const defaultPipelineDependencies: PipelineDependencies = {
+  discoverIssues,
+  loadState,
+  printIssueProposalTable,
+  reviewFix,
+  runDiscoverCommand,
+  runFixCommand,
+  saveState,
+  submitApprovedFix,
+  writeErrorLine,
+};
+
+export const runPipelineCommand = async (
+  runtimeConfig: Config,
+  commandArgs: string[],
+  output: CliOutput,
+  dependencies: PipelineDependencies = defaultPipelineDependencies,
+): Promise<number> => {
+  const discoverResult = await dependencies.runDiscoverCommand(runtimeConfig, commandArgs);
   if (discoverResult !== 0) return discoverResult;
 
-  const analyzeResult = await runAnalyzeCommand(output);
-  if (analyzeResult !== 0) return analyzeResult;
+  const discoveredState = await dependencies.loadState();
+  selectRepositoryForAnalysis(discoveredState.repositories);
 
-  const fixResult = await runFixCommand();
-  if (fixResult !== 0) return fixResult;
+  for (const repository of discoveredState.repositories) {
+    const discoveredIssuesForRepository = await dependencies.discoverIssues(repository);
 
-  const reviewResult = await reviewFix({}, { autoApprove: true });
-  if (reviewResult !== 0) return reviewResult;
+    if (discoveredIssuesForRepository.length === 0) {
+      continue;
+    }
 
-  return submitApprovedFix();
+    dependencies.printIssueProposalTable(repository, discoveredIssuesForRepository);
+
+    await dependencies.saveState({
+      ...discoveredState,
+      status: "analyzed",
+      issues: discoveredIssuesForRepository,
+    });
+
+    try {
+      const fixResult = await dependencies.runFixCommand();
+      if (fixResult !== 0) {
+        continue;
+      }
+    } catch (pipelineError) {
+      const pipelineErrorMessage = pipelineError instanceof Error ? pipelineError.message : String(pipelineError);
+
+      if (pipelineErrorMessage.includes("repository is too large")) {
+        dependencies.writeErrorLine(output, `Skipping ${repository.fullName}: ${pipelineErrorMessage}`);
+        continue;
+      }
+
+      throw pipelineError;
+    }
+
+    const reviewResult = await dependencies.reviewFix({}, { autoApprove: true });
+    if (reviewResult !== 0) {
+      return reviewResult;
+    }
+
+    return dependencies.submitApprovedFix();
+  }
+
+  dependencies.writeErrorLine(output, "No fixable issues found across all repositories.");
+  return 1;
 };
 
 
