@@ -244,8 +244,7 @@ export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
   ]);
 
   const filtered = issues.filter((issue) => {
-    const isUnassigned = issue.assignees.length === 0;
-    return isUnassigned && isNotStale(issue) && hasClearDescription(issue);
+    return isNotStale(issue) && hasClearDescription(issue);
   });
 
   const scored = filtered
