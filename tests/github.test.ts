@@ -286,6 +286,27 @@ describe("GitHubClient", () => {
     );
   });
 
+  it("searchIssues rethrows non-rate-limit 403 errors", async () => {
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+
+    spawnMock.mockReturnValue(
+      createMockProcess({
+        stderr: "HTTP 403: Resource not accessible by integration",
+        exitCode: 1,
+      }),
+    );
+
+    const client = new GitHubClient();
+
+    await expect(
+      client.searchIssues("owner/repo", {
+        labels: ["help wanted"],
+        limit: 10,
+      }),
+    ).rejects.toBeInstanceOf(GitHubAPIError);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it("forkRepo returns fork URL from gh repo fork output", async () => {
     spawnMock.mockReturnValue(
       createMockProcess({
