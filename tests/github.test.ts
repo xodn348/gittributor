@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { GitHubAPIError, GitHubClient } from "../src/lib/github";
+import * as logger from "../src/lib/logger";
 
 function toStream(text: string): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -238,6 +239,51 @@ describe("GitHubClient", () => {
       stdout: "pipe",
       stderr: "pipe",
     });
+  });
+
+  it("searchIssues returns empty list and warns when GitHub rate limit is hit", async () => {
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+
+    spawnMock.mockReturnValue(
+      createMockProcess({
+        stderr: "HTTP 403: API rate limit exceeded for user ID 58055473.",
+        exitCode: 1,
+      }),
+    );
+
+    const client = new GitHubClient();
+    const result = await client.searchIssues("owner/repo", {
+      labels: ["help wanted"],
+      limit: 50,
+    });
+
+    expect(result).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Skipping owner/repo because GitHub API rate limit was exceeded while searching issues.",
+    );
+  });
+
+  it("searchIssues returns empty list when exit code 1 includes rate limit text", async () => {
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+
+    spawnMock.mockReturnValue(
+      createMockProcess({
+        stderr: "API rate limit exceeded. Retry later.",
+        exitCode: 1,
+      }),
+    );
+
+    const client = new GitHubClient();
+    const result = await client.searchIssues("owner/repo", {
+      labels: ["help wanted"],
+      limit: 10,
+    });
+
+    expect(result).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Skipping owner/repo because GitHub API rate limit was exceeded while searching issues.",
+    );
   });
 
   it("forkRepo returns fork URL from gh repo fork output", async () => {

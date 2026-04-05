@@ -1,6 +1,6 @@
 import type { Issue, PRSubmission, Repository } from "../types/index";
 import { GitHubAPIError } from "./errors";
-import { debug } from "./logger";
+import { debug, warn } from "./logger";
 
 interface RepositorySearchResult {
   name: string;
@@ -30,6 +30,18 @@ interface IssueDetailsResult {
 }
 
 export { GitHubAPIError };
+
+const isIssueSearchRateLimitError = (error: unknown): error is GitHubAPIError => {
+  if (!(error instanceof GitHubAPIError)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.toLowerCase();
+  const hasHttp403Signal = normalizedMessage.includes("http 403");
+  const hasRateLimitSignal = normalizedMessage.includes("rate limit");
+
+  return hasRateLimitSignal && (hasHttp403Signal || error.exitCode === 1);
+};
 
 export class GitHubClient {
   async searchRepositories(opts: {
@@ -83,21 +95,33 @@ export class GitHubClient {
     const uniqueIssues = new Map<number, IssueSearchResult>();
 
     for (const label of labels) {
-      const stdout = await this.runCommand([
-        "gh",
-        "search",
-        "issues",
-        "--repo",
-        repoFullName,
-        "--label",
-        label,
-        "--state",
-        "open",
-        "--json",
-        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
-        "--limit",
-        String(opts.limit),
-      ]);
+      let stdout: string;
+
+      try {
+        stdout = await this.runCommand([
+          "gh",
+          "search",
+          "issues",
+          "--repo",
+          repoFullName,
+          "--label",
+          label,
+          "--state",
+          "open",
+          "--json",
+          "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
+          "--limit",
+          String(opts.limit),
+        ]);
+      } catch (error) {
+        if (isIssueSearchRateLimitError(error)) {
+          warn(`Skipping ${repoFullName} because GitHub API rate limit was exceeded while searching issues.`);
+          debug(`Issue discovery skipped for ${repoFullName}: ${error.message}`);
+          return [];
+        }
+
+        throw error;
+      }
 
       const data = this.parseJSON<IssueSearchResult[]>(stdout, "searchIssues");
       for (const issue of data) {
