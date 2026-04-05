@@ -10,10 +10,40 @@ bun install
 
 # 2. Authenticate with GitHub
 gh auth login
+```
 
-# 3. Set your Anthropic auth (pick one)
-export ANTHROPIC_API_KEY="sk-ant-..."          # API key
-export CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-..." # OAuth token (takes priority)
+See `.env.example` for a complete env template.
+
+### AI Provider Configuration
+
+Select which AI provider to use (default: `anthropic`):
+
+```bash
+GITTRIBUTOR_AI_PROVIDER=anthropic  # or "openai"
+```
+
+Anthropic (default):
+
+```bash
+CLAUDE_CODE_OAUTH_TOKEN=your_oauth_token  # preferred
+# OR
+ANTHROPIC_API_KEY=your_api_key
+```
+
+OpenAI:
+
+```bash
+OPENAI_OAUTH_TOKEN=your_oauth_token  # preferred
+# OR
+OPENAI_API_KEY=your_api_key
+OPENAI_MODEL=gpt-4o-mini  # optional, defaults to gpt-4o-mini
+```
+
+Optional tuning:
+
+```bash
+GITTRIBUTOR_ANALYZER_MAX_TOKENS=700  # default: 700
+GITTRIBUTOR_FIX_MAX_TOKENS=1024      # default: 1024
 ```
 
 ## Usage

@@ -5,7 +5,9 @@ import type { FixResult, PRSubmission, PipelineState, PipelineStatus } from "../
 
 const WORKSPACE_ROOT = ".gittributor/workspace";
 const AI_DISCLOSURE =
-  "This fix was generated with AI assistance (Anthropic Claude) and reviewed by a human.";
+  process.env.GITTRIBUTOR_AI_PROVIDER === "openai"
+    ? "This fix was generated with AI assistance (OpenAI) and reviewed by a human."
+    : "This fix was generated with AI assistance (Anthropic Claude) and reviewed by a human.";
 
 interface FixChange {
   file: string;
