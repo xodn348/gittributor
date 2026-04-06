@@ -42,7 +42,6 @@ const parsePositiveIntegerEnv = (name: string, fallback: number): number => {
 
 const MAX_FIX_TOKENS = parsePositiveIntegerEnv("GITTRIBUTOR_FIX_MAX_TOKENS", 1024);
 const DEFAULT_CONFIDENCE = 0.5;
-const MAX_PROMPT_FILE_LINES = parsePositiveIntegerEnv("GITTRIBUTOR_FIX_MAX_PROMPT_FILE_LINES", 90);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -64,8 +63,13 @@ function clampConfidence(confidence: unknown): number {
   return confidence;
 }
 
+function extractJson(text: string): string {
+  const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  return match ? match[1].trim() : text.trim();
+}
+
 function parseFixPayload(responseText: string): ParsedFixPayload {
-  const parsed = JSON.parse(responseText) as unknown;
+  const parsed = JSON.parse(extractJson(responseText)) as unknown;
   if (!isRecord(parsed)) {
     throw new FixValidationError("Failed to parse fix response: response must be a JSON object.");
   }
@@ -135,54 +139,30 @@ function buildSystemPrompt(): string {
   ].join(" ");
 }
 
-function truncatePromptSnippet(content: string): string {
-  const lines = content.split("\n");
-
-  if (lines.length <= MAX_PROMPT_FILE_LINES) {
-    return content;
-  }
-
-  return `${lines.slice(0, MAX_PROMPT_FILE_LINES).join("\n")}\n// [...truncated at ${MAX_PROMPT_FILE_LINES} lines for fix prompt...]`;
-}
-
 function buildFileContentsSection(analysis: AnalysisResult): string {
   if (!analysis.fileContents || Object.keys(analysis.fileContents).length === 0) {
-    return "";
+    return `<analyzer-relevant-files>${analysis.relevantFiles.join(", ") || "(none provided)"}</analyzer-relevant-files>`;
   }
 
-  const blocks = analysis.relevantFiles
-    .filter((filePath) => typeof analysis.fileContents?.[filePath] === "string")
-    .map((filePath) => {
-      const content = analysis.fileContents?.[filePath] ?? "";
-      return `<file path="${filePath}">\n${truncatePromptSnippet(content)}\n</file>`;
-    })
+  const fileBlocks = Object.entries(analysis.fileContents)
+    .map(([filePath, content]) => `<file path="${filePath}">\n${content}\n</file>`)
     .join("\n\n");
 
-  if (blocks.length === 0) {
-    return "";
-  }
-
-  return `\n\n<relevant-file-contents>\n${blocks}\n</relevant-file-contents>`;
+  return `<file-contents>\n${fileBlocks}\n</file-contents>`;
 }
 
 function buildPrompt(analysis: AnalysisResult, issue: Issue, repo: Repository): string {
-  const base = [
+  return [
     "Generate a fix proposal for this GitHub issue.",
     `<repository>${repo.fullName}</repository>`,
     `<repository-description>${repo.description ?? "(no description)"}</repository-description>`,
     `<issue-number>${issue.number}</issue-number>`,
     `<issue-title>${issue.title}</issue-title>`,
     `<issue-description>${issue.body ?? "(no body)"}</issue-description>`,
-    `<analyzer-relevant-files>${analysis.relevantFiles.join(", ") || "(none provided)"}</analyzer-relevant-files>`,
-    `<analyzer-root-cause>${analysis.rootCause ?? "(not provided)"}</analyzer-root-cause>`,
-    `<analyzer-affected-files>${analysis.affectedFiles?.join(", ") || "(not provided)"}</analyzer-affected-files>`,
-    `<analyzer-complexity>${analysis.complexity ?? "(not provided)"}</analyzer-complexity>`,
     buildFileContentsSection(analysis),
     `<analyzer-suggested-approach>${analysis.suggestedApproach}</analyzer-suggested-approach>`,
     `<analyzer-confidence>${analysis.confidence}</analyzer-confidence>`,
   ].join("\n\n");
-
-  return base;
 }
 
 async function persistFixResult(issue: Issue, result: FixResult): Promise<void> {
