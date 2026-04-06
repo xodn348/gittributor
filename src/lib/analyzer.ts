@@ -164,9 +164,14 @@ function listSourceFiles(directoryPath: string): string[] {
   return discoveredFiles;
 }
 
+const PREFERRED_SOURCE_DIRS = ["src", "source", "lib"];
+
 function rankSourceFiles(repoPath: string, issue: Issue): string[] {
-  const preferredRoot = path.join(repoPath, "src");
-  const sourceFiles = listSourceFiles(preferredRoot);
+  let sourceFiles: string[] = [];
+  for (const dir of PREFERRED_SOURCE_DIRS) {
+    sourceFiles = listSourceFiles(path.join(repoPath, dir));
+    if (sourceFiles.length > 0) break;
+  }
   const fallbackFiles = sourceFiles.length > 0 ? sourceFiles : listSourceFiles(repoPath);
   const relativeFiles = fallbackFiles.map((absolutePath) => path.relative(repoPath, absolutePath));
   const mentionedFiles = parseMentionedFiles(issue);
@@ -226,9 +231,14 @@ function buildAnalysisPrompt(
   ].join("\n\n");
 }
 
+function extractJson(text: string): string {
+  const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  return match ? match[1].trim() : text.trim();
+}
+
 function parseAnalysisPayload(responseText: string): ParsedAnalysisPayload {
   try {
-    const parsed = JSON.parse(responseText) as unknown;
+    const parsed = JSON.parse(extractJson(responseText)) as unknown;
     if (!isRecord(parsed)) {
       throw new AnalyzerError("Analyzer response must be a JSON object.");
     }
@@ -278,12 +288,6 @@ async function requestAnalysis(
   selectedFiles: string[],
 ): Promise<AnalysisResult> {
   const prompt = buildAnalysisPrompt(repo, issue, repoPath, selectedFiles);
-  const fileContents = Object.fromEntries(
-    selectedFiles.map((relativeFilePath) => [
-      relativeFilePath,
-      truncateFileByLines(path.join(repoPath, relativeFilePath)),
-    ]),
-  );
   const responseText = await callModel({
     provider: Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim() === "openai" ? "openai" : "anthropic",
     apiKey: Bun.env.OPENAI_API_KEY?.trim() ?? Bun.env.ANTHROPIC_API_KEY?.trim(),
@@ -306,7 +310,9 @@ async function requestAnalysis(
     rootCause: parsedAnalysis.rootCause,
     affectedFiles: normalizedRelevantFiles,
     complexity: parsedAnalysis.complexity,
-    fileContents,
+    fileContents: Object.fromEntries(
+      normalizedRelevantFiles.map((f) => [f, truncateFileByLines(path.join(repoPath, f))]),
+    ),
   };
 }
 
