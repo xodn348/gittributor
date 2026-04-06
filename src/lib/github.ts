@@ -196,23 +196,24 @@ export class GitHubClient {
     };
   }
 
+  /**
+   * Fetches the flat file tree for a repository using the Git Trees API (no clone).
+   * Returns only blob paths (files), not trees (directories).
+   * Zero AI tokens — pure `gh api` call.
+   *
+   * @param repoFullName - e.g. "owner/repo"
+   * @returns Array of file paths relative to repo root.
+   */
   async getFileTree(repoFullName: string): Promise<string[]> {
-    try {
-      const payload = await this.runCommand([
-        "gh",
-        "api",
-        `repos/${repoFullName}/git/trees/HEAD?recursive=1`,
-      ]);
-      const data = this.parseJSON<{ tree?: Array<{ path: string; type: string }> }>(payload, "getFileTree");
-      return (data.tree ?? []).filter((item) => item.type === "blob").map((item) => item.path);
-    } catch (error) {
-      if (error instanceof GitHubAPIError) {
-        debug(`Skipping file tree lookup for ${repoFullName}: ${error.message}`);
-        return [];
-      }
-
-      throw error;
-    }
+    const payload = await this.runCommand([
+      "gh",
+      "api",
+      `repos/${repoFullName}/git/trees/HEAD?recursive=1`,
+    ]);
+    const data = this.parseJSON<{ tree: { path: string; type: string }[] }>(payload, "getFileTree");
+    return data.tree
+      .filter((item) => item.type === "blob")
+      .map((item) => item.path);
   }
 
   private async getIssueReactions(repoFullName: string, issueNumber: number): Promise<number> {
