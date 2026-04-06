@@ -1,0 +1,2 @@
+- 2026-04-03: `gh search issues` applies AND semantics across repeated `--label` flags; passing multiple labels can collapse result sets to zero unless issues carry all labels.
+- 2026-04-03: For issue discovery ranking in mature repos, a 30-day freshness cutoff is too aggressive and can drop otherwise actionable backlog items.

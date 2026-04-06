@@ -1,0 +1,1 @@
+- 2026-04-03 (unresolved): `bun run typecheck` remains non-zero due to pre-existing TypeScript errors in `src/lib/anthropic.ts` unrelated to the issue-discovery pipeline fixes.

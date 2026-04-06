@@ -1,0 +1,3 @@
+- 2026-04-03: Locked `searchIssues()` to a single `--label "good first issue"` query argument to prevent multi-label AND filtering from returning empty issue lists.
+- 2026-04-03: Renamed staleness constant to `ONE_YEAR_IN_MS` and set it to `365 * 24 * 60 * 60 * 1000` to align discovery with long-lived OSS issue cadence.
+- 2026-04-03: Updated issue-discovery tests to validate one-year recency behavior instead of 30-day assumptions.

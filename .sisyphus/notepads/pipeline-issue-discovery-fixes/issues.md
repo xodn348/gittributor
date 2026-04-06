@@ -1,0 +1,2 @@
+- 2026-04-03: Initial test run failed in `tests/issues.test.ts` because stale-window assertions still encoded 30-day behavior after widening to one year.
+- 2026-04-03: `bun run typecheck` fails in unrelated existing code at `src/lib/anthropic.ts:67-68` (BodyInit mismatch), not introduced by this fix set.

@@ -1,0 +1,102 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/index.test.ts:
+236 |     const io = createMockIo();
+237 | 
+238 |     await runCliEntry(["analyze"], { io: io.io });
+239 | 
+240 |     expect(saveStateMock).toHaveBeenCalledTimes(1);
+241 |     expect(saveStateMock).toHaveBeenCalledWith(
+                                ^
+error: expect(received).toHaveBeenCalledWith(...expected)
+
+@@ -1,23 +1,40 @@
+  [
+-   ObjectContaining {
+-     "issues": [
++   {
++     "analyses": {},
++     "fixes": {},
++     "issues": [],
++     "lastUpdated": "2026-04-01T00:00:00.000Z",
++     "repositories": [
++       {
++         "description": "repoA description",
++         "fullName": "owner/repoA",
++         "id": 1,
++         "language": "TypeScript",
++         "name": "repoA",
++         "openIssuesCount": 10,
++         "stars": 100,
++         "updatedAt": "2026-04-01T00:00:00.000Z",
++         "url": "https://github.com/owner/repoA",
++       },
++       {
++         "description": "repoB description",
++         "fullName": "owner/repoB",
++         "id": 1,
++         "language": "TypeScript",
++         "name": "repoB",
++         "openIssuesCount": 10,
++         "stars": 100,
++         "updatedAt": "2026-04-01T00:00:00.000Z",
++         "url": "https://github.com/owner/repoB",
++       },
+        {
+-         "approachabilityScore": 4,
+-         "assignees": [],
+-         "body": "Issue body",
+-         "codebaseScore": 2,
+-         "commentsCount": 1,
+-         "createdAt": "2026-04-01T00:00:00.000Z",
+-         "id": 2001,
+-         "impactScore": 3,
+-         "labels": [
+-           "good first issue",
+-         ],
+-         "number": 42,
+-         "reactions": 5,
+-         "repoFullName": "owner/repoB",
+-         "title": "Fix analyzer fallback",
+-         "totalScore": 9,
++         "description": "repoC description",
++         "fullName": "owner/repoC",
++         "id": 1,
++         "language": "TypeScript",
++         "name": "repoC",
++         "openIssuesCount": 10,
++         "stars": 100,
+          "updatedAt": "2026-04-01T00:00:00.000Z",
+-         "url": "https://github.com/owner/repoB/issues/42",
++         "url": "https://github.com/owner/repoC",
+        },
+@@ -25,3 +42,4 @@
+      "status": "analyzed",
++     "submissions": [],
++     "version": "1.0.0",
+    },
+
+- Expected  - 19
++ Received  + 38
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/index.test.ts:241:27)
+(fail) runCli analyze command repository fallback (RED) > skips repos with no issues and uses first repo with results [10.79ms]
+261 |     const { runCli: runCliEntry } = await import(`../src/index.ts?red-${Date.now()}-${nextImportNonce()}`);
+262 |     const io = createMockIo();
+263 | 
+264 |     const result = await runCliEntry(["analyze"], { io: io.io });
+265 | 
+266 |     expect(result.exitCode).toBe(1);
+                                  ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/index.test.ts:266:29)
+(fail) runCli analyze command repository fallback (RED) > throws error when all repos yield 0 issues [1.16ms]
+
+ 5 pass
+ 2 fail
+ 22 expect() calls
+Ran 7 tests across 1 file. [180.00ms]

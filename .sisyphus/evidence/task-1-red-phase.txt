@@ -1,0 +1,152 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/github.test.ts:
+144 |       limit: 5,
+145 |     };
+146 |     const result = await client.searchIssues("owner/repo", opts);
+147 | 
+148 |     expect(result).toHaveLength(1);
+149 |     expect(result[0]).toMatchObject({
+                            ^
+error: expect(received).toMatchObject(expected)
+
+@@ -5,5 +5,6 @@
+    ],
++   "body": "Details",
+    "commentsCount": 4,
++   "createdAt": "2026-03-31T00:00:00Z",
++   "id": 42,
+    "labels": [
+@@ -13,3 +14,3 @@
+    "number": 42,
+-   "reactions": 7,
++   "reactions": 0,
+    "repoFullName": "owner/repo",
+@@ -17,3 +18,3 @@
+    "updatedAt": "2026-04-01T00:00:00Z",
++   "url": "https://github.com/owner/repo/issues/42",
+  }
+
+- Expected  - 1
++ Received  + 5
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/github.test.ts:149:23)
+(fail) GitHubClient > searchIssues uses gh search issues with labels and maps fields [1.15ms]
+375 |       limit: 2,
+376 |     };
+377 |     const result = await client.searchIssues("owner/repo", opts);
+378 | 
+379 |     expect(result).toHaveLength(1);
+380 |     expect(spawnMock).toHaveBeenNthCalledWith(1, {
+                            ^
+error: expect(received).toHaveBeenNthCalledWith(n, ...expected)
+
+Call #1:
+@@ -9,3 +9,3 @@
+        "--label",
+-       "bug",
++       "good first issue",
+        "--state",
+
+- Expected  - 1
++ Received  + 1
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/github.test.ts:380:23)
+(fail) GitHubClient > searchIssues searches each label separately [0.30ms]
+458 |       limit: 5,
+459 |     };
+460 |     const result = await client.searchIssues("owner/repo", opts);
+461 | 
+462 |     expect(result).toHaveLength(1);
+463 |     expect(spawnMock).toHaveBeenCalledTimes(3);
+                            ^
+error: expect(received).toHaveBeenCalledTimes(expected)
+
+Expected number of calls: 3
+Received number of calls: 2
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/github.test.ts:463:23)
+(fail) GitHubClient > searchIssues deduplicates issues with same number across label searches [0.31ms]
+
+ 10 pass
+ 3 fail
+ 33 expect() calls
+Ran 13 tests across 1 file. [23.00ms]
+
+---
+Run: bun test tests/github.test.ts 2>&1
+
+bun test v1.3.9 (cf6cdbbb)
+
+tests/github.test.ts:
+144 |       limit: 5,
+145 |     };
+146 |     const result = await client.searchIssues("owner/repo", opts);
+147 | 
+148 |     expect(result).toHaveLength(1);
+149 |     expect(result[0]).toMatchObject({
+                            ^
+error: expect(received).toMatchObject(expected)
+
+@@ -5,5 +5,6 @@
+   ],
++   "body": "Details",
+   "commentsCount": 4,
++   "createdAt": "2026-03-31T00:00:00Z",
++   "id": 42,
+   "labels": [
+@@ -13,3 +14,3 @@
+   "number": 42,
+-   "reactions": 7,
++   "reactions": 0,
+   "repoFullName": "owner/repo",
+@@ -17,3 +18,3 @@
+   "updatedAt": "2026-04-01T00:00:00Z",
++   "url": "https://github.com/owner/repo/issues/42",
+ }
+
+- Expected  - 1
++ Received  + 5
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/github.test.ts:149:23)
+(fail) GitHubClient > searchIssues uses gh search issues with labels and maps fields [0.90ms]
+375 |       limit: 2,
+376 |     };
+377 |     const result = await client.searchIssues("owner/repo", opts);
+378 | 
+379 |     expect(result).toHaveLength(1);
+380 |     expect(spawnMock).toHaveBeenNthCalledWith(1, {
+                            ^
+error: expect(received).toHaveBeenNthCalledWith(n, ...expected)
+
+Call #1:
+@@ -9,3 +9,3 @@
+       "--label",
+-       "bug",
++       "good first issue",
+       "--state",
+
+- Expected  - 1
++ Received  + 1
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/github.test.ts:380:23)
+(fail) GitHubClient > searchIssues searches each label separately [0.27ms]
+458 |       limit: 5,
+459 |     };
+460 |     const result = await client.searchIssues("owner/repo", opts);
+461 | 
+462 |     expect(result).toHaveLength(1);
+463 |     expect(spawnMock).toHaveBeenCalledTimes(3);
+                            ^
+error: expect(received).toHaveBeenCalledTimes(expected)
+
+Expected number of calls: 3
+Received number of calls: 2
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/github.test.ts:463:23)
+(fail) GitHubClient > searchIssues deduplicates issues with same number across label searches [0.30ms]
+
+ 10 pass
+ 3 fail
+ 33 expect() calls
+Ran 13 tests across 1 file. [16.00ms]

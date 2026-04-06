@@ -1,0 +1,11 @@
+$ git log --oneline -5
+059198d fix(cli): iterate repositories in analysis to skip repos with no matching issues
+fb9ab96 fix(github): iterate all configured labels in searchIssues instead of hardcoding
+8e85ff0 fix(analyze): remove isUnassigned filter that excluded most beginner issues
+ea69a00 fix: resolve issue discovery pipeline failures and improve robustness
+28eb4d1 feat: add run command, dual OAuth auth, remove GITHUB_TOKEN requirement
+
+$ git log --oneline -3
+059198d fix(cli): iterate repositories in analysis to skip repos with no matching issues
+fb9ab96 fix(github): iterate all configured labels in searchIssues instead of hardcoding
+8e85ff0 fix(analyze): remove isUnassigned filter that excluded most beginner issues

@@ -1,0 +1,233 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/submit.test.ts:
+Cannot submit: fix was not approved
+131 |       );
+132 | 
+133 |     const { submitApprovedFix } = await import("../src/commands/submit");
+134 |     const exitCode = await submitApprovedFix();
+135 | 
+136 |     expect(exitCode).toBe(0);
+                           ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 1
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/submit.test.ts:136:22)
+(fail) submit command > successful submission runs workflow, transitions state, and stores PR URL [2.12ms]
+Cannot submit: fix was not approved
+229 | 
+230 |     const { submitApprovedFix } = await import("../src/commands/submit");
+231 |     const exitCode = await submitApprovedFix();
+232 | 
+233 |     expect(exitCode).toBe(1);
+234 |     expect(spawnSpy).toHaveBeenCalledTimes(6);
+                           ^
+error: expect(received).toHaveBeenCalledTimes(expected)
+
+Expected number of calls: 6
+Received number of calls: 0
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/submit.test.ts:234:22)
+(fail) submit command > push failure transitions to submit_failed and skips PR creation [1.41ms]
+Cannot submit: fix was not approved
+258 |     const persisted = JSON.parse(readFileSync(join(tempDir, ".gittributor", "state.json"), "utf8")) as {
+259 |       status: string;
+260 |       data?: { submission?: { error?: string } };
+261 |     };
+262 | 
+263 |     expect(persisted.status).toBe("submit_failed");
+                                   ^
+error: expect(received).toBe(expected)
+
+Expected: "submit_failed"
+Received: "reviewed"
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/submit.test.ts:263:30)
+(fail) submit command > rejected review exits early with error and no git operations [1.22ms]
+
+tests/issues.test.ts:
+66 |       makeIssue({ id: 2, number: 2, assignees: [] }),
+67 |     ]);
+68 | 
+69 |     const issues = await discoverIssues(repoFixture);
+70 | 
+71 |     expect(issues).toHaveLength(1);
+                        ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 1
+Received length: 0
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/issues.test.ts:71:20)
+(fail) discoverIssues > filters assigned issues [0.82ms]
+78 |       makeIssue({ id: 2, number: 2, updatedAt: "2026-03-10T00:00:00.000Z" }),
+79 |     ]);
+80 | 
+81 |     const issues = await discoverIssues(repoFixture);
+82 | 
+83 |     expect(issues).toHaveLength(1);
+                        ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 1
+Received length: 0
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/issues.test.ts:83:20)
+(fail) discoverIssues > filters stale issues older than one year based on updatedAt [0.40ms]
+102 |       }),
+103 |     ]);
+104 | 
+105 |     const issues = await discoverIssues(repoFixture);
+106 | 
+107 |     expect(issues).toHaveLength(2);
+                         ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 2
+Received length: 0
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/issues.test.ts:107:20)
+(fail) discoverIssues > sorts by approachability score descending [0.49ms]
+130 |       "src/parser.ts",
+131 |     ]);
+132 | 
+133 |     const issues = await discoverIssues(repoFixture);
+134 | 
+135 |     expect(issues).toHaveLength(1);
+                         ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 1
+Received length: 0
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/issues.test.ts:135:20)
+(fail) discoverIssues > adds impact and codebase scores when reactions, comments, and file tree matches exist [0.43ms]
+155 |     ]);
+156 |     spyOn(GitHubClient.prototype, "getFileTree").mockResolvedValue([]);
+157 | 
+158 |     const issues = await discoverIssues(repoFixture);
+159 | 
+160 |     expect(issues).toHaveLength(1);
+                         ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 1
+Received length: 0
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/issues.test.ts:160:20)
+(fail) discoverIssues > gracefully skips codebase scoring when file tree lookup fails [0.47ms]
+ENOENT: no such file or directory, open '/var/folders/cd/b7pb79314hg8d_srww795nb80000gn/T/gittributor-issues-bRZyOx/.gittributor/issues.json'
+    path: "/var/folders/cd/b7pb79314hg8d_srww795nb80000gn/T/gittributor-issues-bRZyOx/.gittributor/issues.json",
+ syscall: "open",
+   errno: -2,
+    code: "ENOENT"
+
+(fail) discoverIssues > persists discovered issues to .gittributor/issues.json [0.51ms]
+[36m[1m[INFO][0m Searching repositories with query: language:TypeScript+stars:>=100+good-first-issues:>0+created:>=2026-03-28&sort=stars&order=desc
+[32m[1mRepository                      Stars     Language        Good First Issues     URL
+octo/good                       120       TypeScript      3                     https://github.com/octo/good[0m
+[36m[1m[INFO][0m Searching repositories with query: language:TypeScript+good-first-issues:>0+created:>=2026-03-28&sort=stars&order=desc
+No repositories found with good first issues.
+
+tests/state.test.ts:
+ENOENT: no such file or directory, stat '/var/folders/cd/b7pb79314hg8d_srww795nb80000gn/T/gittributor-state-hhbxuR/.gittributor'
+    path: "/var/folders/cd/b7pb79314hg8d_srww795nb80000gn/T/gittributor-state-hhbxuR/.gittributor",
+ syscall: "stat",
+   errno: -2,
+    code: "ENOENT"
+
+(fail) state persistence manager > loadState returns idle when state file does not exist [0.67ms]
+55 |       join(tempDir, ".gittributor", "state.json"),
+56 |       JSON.stringify(persisted, null, 2),
+57 |     );
+58 |     const loaded = await loadState();
+59 | 
+60 |     expect(loaded).toEqual(persisted);
+                        ^
+error: expect(received).toEqual(expected)
+
+@@ -2,10 +2,31 @@
+    "analyses": {},
+-   "data": {
+-     "prCount": 2,
+-   },
+    "fixes": {},
+    "issues": [],
+-   "lastUpdated": "2026-01-01T00:00:00.000Z",
+-   "repositories": [],
+-   "status": "reviewed",
++   "lastUpdated": "2026-04-01T00:00:00.000Z",
++   "repositories": [
++     {
++       "description": "repoA description",
++       "fullName": "owner/repoA",
++       "id": 1,
++       "language": "TypeScript",
++       "name": "repoA",
++       "openIssuesCount": 10,
++       "stars": 100,
++       "updatedAt": "2026-04-01T00:00:00.000Z",
++       "url": "https://github.com/owner/repoA",
++     },
++     {
++       "description": "repoB description",
++       "fullName": "owner/repoB",
++       "id": 1,
++       "language": "TypeScript",
++       "name": "repoB",
++       "openIssuesCount": 10,
++       "stars": 100,
++       "updatedAt": "2026-04-01T00:00:00.000Z",
++       "url": "https://github.com/owner/repoB",
++     },
++   ],
++   "status": "discovered",
+    "submissions": [],
+
+- Expected  - 6
++ Received  + 26
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/state.test.ts:60:20)
+(fail) state persistence manager > loadState returns persisted state from file [1.01ms]
+ENOENT: no such file or directory, open '/var/folders/cd/b7pb79314hg8d_srww795nb80000gn/T/gittributor-state-xBnGAp/.gittributor/state.json'
+    path: "/var/folders/cd/b7pb79314hg8d_srww795nb80000gn/T/gittributor-state-xBnGAp/.gittributor/state.json",
+ syscall: "open",
+   errno: -2,
+    code: "ENOENT"
+
+(fail) state persistence manager > saveState writes json with an ISO lastUpdated timestamp [0.32ms]
+ 99 |     await setStateData("analysisSummary", { ready: true, count: 3 });
+100 | 
+101 |     const analysisSummary = getStateData<{ ready: boolean; count: number }>("analysisSummary");
+102 |     const loaded = await loadState();
+103 | 
+104 |     expect(analysisSummary).toEqual({ ready: true, count: 3 });
+                                  ^
+error: expect(received).toEqual(expected)
+
+- {
+-   "count": 3,
+-   "ready": true,
+- }
++ null
+
+- Expected  - 4
++ Received  + 1
+
+      at <anonymous> (/Users/jnnj92/gittributor/tests/state.test.ts:104:29)
+(fail) state persistence manager > setStateData persists associated data and getStateData reads it [0.51ms]
+ENOENT: no such file or directory, open '/var/folders/cd/b7pb79314hg8d_srww795nb80000gn/T/gittributor-state-isolated-WRSPjp/.gittributor/state.json'
+    path: "/var/folders/cd/b7pb79314hg8d_srww795nb80000gn/T/gittributor-state-isolated-WRSPjp/.gittributor/state.json",
+ syscall: "open",
+   errno: -2,
+    code: "ENOENT"
+
+(fail) state persistence manager > saveState does not persist cached data into a separate fresh workspace [0.60ms]
+
+ 156 pass
+ 3 skip
+ 14 fail
+ 419 expect() calls
+Ran 173 tests across 20 files. [473.00ms]
