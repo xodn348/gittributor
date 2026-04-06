@@ -100,9 +100,27 @@ export async function callAnthropic(options: {
   return text;
 }
 
+function extractJson(text: string): string {
+  // Strip markdown code fences: ```json ... ``` or ``` ... ```
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    return fenceMatch[1].trim();
+  }
+
+  // Find first { ... } block in the text
+  const braceStart = text.indexOf("{");
+  const braceEnd = text.lastIndexOf("}");
+  if (braceStart !== -1 && braceEnd > braceStart) {
+    return text.slice(braceStart, braceEnd + 1);
+  }
+
+  return text;
+}
+
 function parseJsonObject(text: string, field: string): Record<string, unknown> {
+  const candidate = extractJson(text);
   try {
-    const parsed = JSON.parse(text) as unknown;
+    const parsed = JSON.parse(candidate) as unknown;
     if (!isRecord(parsed)) {
       throw new AnthropicAPIError(`Anthropic ${field} response must be a JSON object.`);
     }

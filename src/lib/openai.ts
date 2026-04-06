@@ -1,16 +1,13 @@
 import { OpenAIAPIError } from "./errors";
 
-interface OpenAIResponsesOutputContent {
-  text?: string;
+interface OpenAIChatChoice {
+  message?: {
+    content?: string;
+  };
 }
 
-interface OpenAIResponsesOutputItem {
-  content?: OpenAIResponsesOutputContent[];
-}
-
-interface OpenAIResponsesResult {
-  output_text?: string;
-  output?: OpenAIResponsesOutputItem[];
+interface OpenAIChatResult {
+  choices?: OpenAIChatChoice[];
   error?: {
     message?: string;
   };
@@ -25,8 +22,8 @@ export interface OpenAIRequestOptions {
   model?: string;
 }
 
-const OPENAI_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses";
-const DEFAULT_OPENAI_MODEL = "gpt-5-mini";
+const OPENAI_CHAT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 
 const pickBearerToken = (options: OpenAIRequestOptions): string | undefined => {
   return options.oauthToken ?? options.apiKey ?? Bun.env.OPENAI_OAUTH_TOKEN?.trim() ?? Bun.env.OPENAI_API_KEY?.trim();
@@ -36,17 +33,8 @@ const pickModel = (options: OpenAIRequestOptions): string => {
   return options.model ?? Bun.env.OPENAI_MODEL?.trim() ?? DEFAULT_OPENAI_MODEL;
 };
 
-const parseOutputText = (payload: OpenAIResponsesResult): string => {
-  if (typeof payload.output_text === "string" && payload.output_text.trim().length > 0) {
-    return payload.output_text.trim();
-  }
-
-  const contentParts = (payload.output ?? [])
-    .flatMap((item) => item.content ?? [])
-    .map((content) => content.text ?? "")
-    .filter((text) => text.trim().length > 0);
-
-  return contentParts.join("\n").trim();
+const parseOutputText = (payload: OpenAIChatResult): string => {
+  return (payload.choices?.[0]?.message?.content ?? "").trim();
 };
 
 export async function callOpenAI(options: OpenAIRequestOptions): Promise<string> {
@@ -56,7 +44,7 @@ export async function callOpenAI(options: OpenAIRequestOptions): Promise<string>
   }
 
   const model = pickModel(options);
-  const response = await fetch(OPENAI_RESPONSES_ENDPOINT, {
+  const response = await fetch(OPENAI_CHAT_ENDPOINT, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${bearerToken}`,
@@ -64,8 +52,8 @@ export async function callOpenAI(options: OpenAIRequestOptions): Promise<string>
     },
     body: JSON.stringify({
       model,
-      max_output_tokens: options.maxTokens,
-      input: [
+      max_tokens: options.maxTokens,
+      messages: [
         {
           role: "system",
           content: options.system,
@@ -78,9 +66,9 @@ export async function callOpenAI(options: OpenAIRequestOptions): Promise<string>
     }),
   });
 
-  let payload: OpenAIResponsesResult;
+  let payload: OpenAIChatResult;
   try {
-    payload = (await response.json()) as OpenAIResponsesResult;
+    payload = (await response.json()) as OpenAIChatResult;
   } catch {
     throw new OpenAIAPIError("OpenAI response was not valid JSON.", response.status);
   }
