@@ -1,30 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { GitHubClient } from "../lib/github";
-import { debug, info, log } from "../lib/logger";
+import { debug, info } from "../lib/logger";
 import type { Issue, Repository } from "../types";
 
 const ISSUE_LABELS = ["good first issue", "good-first-issue", "beginner", "help wanted"];
 const ISSUE_SEARCH_LIMIT = 50;
-const ONE_YEAR_IN_MS = 365 * 24 * 60 * 60 * 1000;
-const FILE_PATH_PATTERN = /(?:[\w.-]+\/)*[\w.-]+\.[a-z0-9]+/gi;
-const DIRECTORY_PATTERN = /(?:src|lib|app|tests?|packages|docs)\/[\w./-]+/gi;
-const STOP_WORDS = new Set([
-  "about",
-  "after",
-  "before",
-  "check",
-  "clear",
-  "issue",
-  "please",
-  "steps",
-  "their",
-  "there",
-  "these",
-  "this",
-  "when",
-  "with",
-]);
+const THIRTY_DAYS_IN_MS = 30 * 24 * 60 * 60 * 1000;
 
 const REPRODUCTION_PATTERNS = [
   /steps to reproduce/i,
@@ -60,6 +42,19 @@ const SINGLE_FILE_FIX_PATTERNS = [
   /just\s+[\w./-]+\.(ts|tsx|js|jsx|py|go|java|rb|rs|c|cpp|cs)/i,
 ];
 
+const IMPACT_PATTERNS = [
+  /\bcrash(es|ing)?\b/i,
+  /\bcritical\b/i,
+  /\bsecurity\b/i,
+  /\bvulnerabilit/i,
+  /\bregression\b/i,
+  /\bdata\s+loss\b/i,
+  /\bcorrupt/i,
+  /\bbreaking\s+change\b/i,
+  /\bproduction\b/i,
+  /\bsevere\b/i,
+];
+
 type IssueWithOptionalUpdatedAt = Issue & {
   updatedAt?: string;
 };
@@ -67,7 +62,6 @@ type IssueWithOptionalUpdatedAt = Issue & {
 export type ScoredIssue = Issue & {
   approachabilityScore: number;
   impactScore: number;
-  codebaseScore: number;
   totalScore: number;
 };
 
@@ -82,20 +76,17 @@ const getIssueUpdatedAt = (issue: Issue): string => {
 
 const isNotStale = (issue: Issue): boolean => {
   const updatedAtMs = Date.parse(getIssueUpdatedAt(issue));
+
   if (!Number.isFinite(updatedAtMs)) {
     return false;
   }
 
-  return Date.now() - updatedAtMs <= ONE_YEAR_IN_MS;
+  return Date.now() - updatedAtMs <= THIRTY_DAYS_IN_MS;
 };
 
 const hasClearDescription = (issue: Issue): boolean => {
   const body = issue.body ?? "";
   return body.trim().length > 50;
-};
-
-const isUnassigned = (issue: Issue): boolean => {
-  return issue.assignees.length === 0;
 };
 
 const scoreApproachability = (issue: Issue): number => {
@@ -122,66 +113,13 @@ const scoreApproachability = (issue: Issue): number => {
 };
 
 const scoreImpact = (issue: Issue): number => {
+  const text = `${issue.title}\n${issue.body ?? ""}`;
   let score = 0;
 
-  if ((issue.reactions ?? 0) > 10) {
-    score += 3;
-  } else if ((issue.reactions ?? 0) >= 5) {
-    score += 2;
-  } else if ((issue.reactions ?? 0) >= 1) {
-    score += 1;
-  }
-
-  if ((issue.commentsCount ?? 0) > 5) {
-    score += 1;
-  }
-
-  if (issue.labels.some((label) => label.toLowerCase().includes("bug"))) {
-    score += 1;
-  }
-
-  return score;
-};
-
-const getIssueText = (issue: Issue): string => {
-  return `${issue.title}\n${issue.body ?? ""}`.toLowerCase();
-};
-
-const extractKeywords = (issue: Issue): string[] => {
-  const matches = getIssueText(issue).match(/[a-z][a-z0-9_-]{3,}/g) ?? [];
-  return [...new Set(matches.filter((keyword) => !STOP_WORDS.has(keyword)))];
-};
-
-const getMentionedFilePaths = (issue: Issue): string[] => {
-  return [...new Set((getIssueText(issue).match(FILE_PATH_PATTERN) ?? []).map((value) => value.toLowerCase()))];
-};
-
-const getMentionedDirectories = (issue: Issue): string[] => {
-  return [...new Set((getIssueText(issue).match(DIRECTORY_PATTERN) ?? []).map((value) => value.toLowerCase()))];
-};
-
-const scoreWithCodebase = (issue: Issue, fileTree: string[]): number => {
-  if (fileTree.length === 0) {
-    return 0;
-  }
-
-  const normalizedTree = fileTree.map((filePath) => filePath.toLowerCase());
-  let score = 0;
-
-  if (getMentionedFilePaths(issue).some((filePath) => normalizedTree.includes(filePath))) {
-    score += 3;
-  }
-
-  if (extractKeywords(issue).some((keyword) => normalizedTree.some((filePath) => filePath.includes(keyword)))) {
-    score += 2;
-  }
-
-  if (
-    getMentionedDirectories(issue).some((directoryPath) =>
-      normalizedTree.some((filePath) => filePath === directoryPath || filePath.startsWith(`${directoryPath}/`)),
-    )
-  ) {
-    score += 1;
+  for (const pattern of IMPACT_PATTERNS) {
+    if (pattern.test(text)) {
+      score += 3;
+    }
   }
 
   return score;
@@ -195,74 +133,79 @@ const persistIssues = async (issues: ScoredIssue[]): Promise<void> => {
   await writeFile(outputPath, `${JSON.stringify(issues, null, 2)}\n`, "utf8");
 };
 
-const estimateComplexity = (issue: ScoredIssue): "low" | "medium" | "high" => {
-  if (issue.approachabilityScore >= 4 || issue.totalScore >= 8) {
-    return "low";
+let lastPrintedProposalTable = "";
+
+const getProposalTableLines = (issues: ScoredIssue[]): string[] => {
+  const top = issues.slice(0, 5);
+
+  if (top.length === 0) {
+    return ["No actionable issues found."];
   }
 
-  if (issue.approachabilityScore >= 2 || issue.totalScore >= 4) {
-    return "medium";
+  const separator = "─".repeat(80);
+  const lines = [separator, "  PROPOSED ISSUES (top scored — ready for analysis)", separator];
+
+  for (const issue of top) {
+    const scoreLabel = `score ${issue.totalScore}`;
+    const truncatedTitle = issue.title.length > 50 ? `${issue.title.slice(0, 47)}...` : issue.title;
+    lines.push(`  #${String(issue.number).padEnd(6)} [${scoreLabel.padEnd(8)}] ${truncatedTitle}`);
+    lines.push(`           ${issue.url}`);
   }
 
-  return "high";
+  lines.push(separator);
+  return lines;
+};
+
+const printProposalTable = (issues: ScoredIssue[]): void => {
+  const table = getProposalTableLines(issues).join("\n");
+  lastPrintedProposalTable = table;
+
+  for (const line of table.split("\n")) {
+    info(line);
+  }
 };
 
 export function buildIssueProposalTable(repo: Repository, issues: ScoredIssue[]): string {
-  if (issues.length === 0) {
-    return "";
-  }
-
-  const rankedLines = issues.slice(0, 5).flatMap((issue, index) => [
-    `[${index + 1}] #${issue.number}  ${issue.title}   (score: ${issue.totalScore})`,
-    `    Complexity: ${estimateComplexity(issue)} | 👍 ${issue.reactions ?? 0} reactions`,
-  ]);
-
-  return [
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    `  TOP 5 FIXABLE ISSUES for ${repo.fullName}`,
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    ...rankedLines,
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    `Run 'gittributor fix' to fix issue #${issues[0].number}`,
-  ].join("\n");
+  void repo;
+  return getProposalTableLines(issues).join("\n");
 }
 
 export function printIssueProposalTable(repo: Repository, issues: ScoredIssue[]): void {
   const table = buildIssueProposalTable(repo, issues);
-  if (!table) {
+
+  if (table === lastPrintedProposalTable) {
+    lastPrintedProposalTable = "";
     return;
   }
 
-  log(table);
+  for (const line of table.split("\n")) {
+    info(line);
+  }
 }
 
 export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
   info(`Discovering issues for ${repo.fullName}...`);
   const githubClient = new GitHubClient();
-  const [issues, fileTree] = await Promise.all([
-    githubClient.searchIssues(repo.fullName, {
-      labels: ISSUE_LABELS,
-      limit: ISSUE_SEARCH_LIMIT,
-    }),
-    githubClient.getFileTree(repo.fullName),
-  ]);
+  const issues = await githubClient.searchIssues(repo.fullName, {
+    labels: ISSUE_LABELS,
+    limit: ISSUE_SEARCH_LIMIT,
+  });
 
   const filtered = issues.filter((issue) => {
-    return isUnassigned(issue) && isNotStale(issue) && hasClearDescription(issue);
+    const isUnassigned = issue.assignees.length === 0;
+
+    return isUnassigned && isNotStale(issue) && hasClearDescription(issue);
   });
 
   const scored = filtered
     .map((issue) => {
       const approachabilityScore = scoreApproachability(issue);
       const impactScore = scoreImpact(issue);
-      const codebaseScore = scoreWithCodebase(issue, fileTree);
-
       return {
         ...issue,
         approachabilityScore,
         impactScore,
-        codebaseScore,
-        totalScore: approachabilityScore + impactScore + codebaseScore,
+        totalScore: approachabilityScore + impactScore,
       };
     })
     .sort((left, right) => {
@@ -274,6 +217,7 @@ export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
     });
 
   await persistIssues(scored);
+  printProposalTable(scored);
   debug(`Discovered ${scored.length} actionable issue(s) for ${repo.fullName}.`);
   return scored;
 }
