@@ -33,7 +33,8 @@ describe("discoverRepos", () => {
     expect(query).toContain("language:TypeScript");
     expect(query).not.toContain("stars:>=");
     expect(query).toContain("good-first-issues:>0");
-    expect(query).toContain("sort=stars");
+    expect(query).toContain("size:<50000");
+    expect(query).toContain("sort=updated");
     expect(query).toContain("order=desc");
     expect(query).toContain("created:>=");
   });
@@ -48,7 +49,7 @@ describe("discoverRepos", () => {
         stars: 120,
         language: "TypeScript",
         openIssuesCount: 3,
-        updatedAt: "2026-03-30T00:00:00.000Z",
+        updatedAt: "2026-04-01T00:00:00.000Z",
         description: "good repo",
       },
       {
@@ -59,7 +60,7 @@ describe("discoverRepos", () => {
         stars: 130,
         language: "TypeScript",
         openIssuesCount: 0,
-        updatedAt: "2026-03-30T00:00:00.000Z",
+        updatedAt: "2026-04-01T00:00:00.000Z",
         description: "bad repo",
       },
     ]);
@@ -96,7 +97,7 @@ describe("discoverRepos", () => {
         stars: 999,
         language: "Go",
         openIssuesCount: 7,
-        updatedAt: "2026-03-30T00:00:00.000Z",
+        updatedAt: "2026-04-01T00:00:00.000Z",
         description: "CLI utility",
       },
     ]);

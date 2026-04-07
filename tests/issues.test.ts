@@ -51,7 +51,6 @@ describe("discoverIssues", () => {
     releaseGlobalLock = await acquireGlobalTestLock();
     Date.now = () => now.getTime();
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([]);
-    spyOn(GitHubClient.prototype, "getFileTree").mockResolvedValue([]);
     tempDir = await mkdtemp(join(tmpdir(), "gittributor-issues-"));
     process.chdir(tempDir);
   });
@@ -77,7 +76,7 @@ describe("discoverIssues", () => {
     expect(issues[0]?.number).toBe(2);
   });
 
-  it("filters stale issues older than one year based on updatedAt", async () => {
+  it("filters stale issues older than the current staleness window based on updatedAt", async () => {
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
       makeIssue({ id: 1, number: 1, updatedAt: "2024-02-15T00:00:00.000Z" }),
       makeIssue({ id: 2, number: 2, updatedAt: "2026-03-10T00:00:00.000Z" }),
@@ -87,6 +86,33 @@ describe("discoverIssues", () => {
 
     expect(issues).toHaveLength(1);
     expect(issues[0]?.number).toBe(2);
+  });
+
+  it("keeps issues updated within 90 days and filters ones older than 90 days", async () => {
+    const eightyNineDaysAgo = new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000).toISOString();
+    const ninetyOneDaysAgo = new Date(now.getTime() - 91 * 24 * 60 * 60 * 1000).toISOString();
+
+    spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
+      makeIssue({ id: 30, number: 30, updatedAt: eightyNineDaysAgo }),
+      makeIssue({ id: 31, number: 31, updatedAt: ninetyOneDaysAgo }),
+    ]);
+
+    const issues = await discoverIssues(repoFixture);
+
+    expect(issues.map((issue) => issue.number)).toEqual([30]);
+  });
+
+  it("keeps bodies longer than 20 chars and filters shorter or empty bodies", async () => {
+    spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
+      makeIssue({ id: 40, number: 40, body: "123456789012345678901" }),
+      makeIssue({ id: 41, number: 41, body: "12345678901234567890" }),
+      makeIssue({ id: 42, number: 42, body: "" }),
+      makeIssue({ id: 43, number: 43, body: "     " }),
+    ]);
+
+    const issues = await discoverIssues(repoFixture);
+
+    expect(issues.map((issue) => issue.number)).toEqual([40]);
   });
 
   it("sorts by approachability score descending", async () => {
@@ -116,7 +142,7 @@ describe("discoverIssues", () => {
     );
   });
 
-  it("adds impact and codebase scores when reactions, comments, and file tree matches exist", async () => {
+  it("adds approachability and impact scores from issue content", async () => {
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
       makeIssue({
         id: 20,
@@ -129,25 +155,19 @@ describe("discoverIssues", () => {
         updatedAt: "2026-03-30T00:00:00.000Z",
       }),
     ]);
-    spyOn(GitHubClient.prototype, "getFileTree").mockResolvedValue([
-      "src/auth/service.ts",
-      "src/auth/index.ts",
-      "src/parser.ts",
-    ]);
-
     const issues = await discoverIssues(repoFixture);
 
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({
-      impactScore: 5,
-      codebaseScore: 6,
+      approachabilityScore: 4,
+      impactScore: 0,
     });
     expect(issues[0]?.totalScore).toBe(
-      issues[0]!.approachabilityScore + issues[0]!.impactScore + issues[0]!.codebaseScore,
+      issues[0]!.approachabilityScore + issues[0]!.impactScore,
     );
   });
 
-  it("gracefully skips codebase scoring when file tree lookup fails", async () => {
+  it("still returns scored issues without codebase tree enrichment", async () => {
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
       makeIssue({
         id: 21,
@@ -158,12 +178,14 @@ describe("discoverIssues", () => {
         updatedAt: "2026-03-30T00:00:00.000Z",
       }),
     ]);
-    spyOn(GitHubClient.prototype, "getFileTree").mockResolvedValue([]);
-
     const issues = await discoverIssues(repoFixture);
 
     expect(issues).toHaveLength(1);
-    expect(issues[0]?.codebaseScore).toBe(0);
+    expect(issues[0]).toMatchObject({
+      approachabilityScore: 4,
+      impactScore: 0,
+      totalScore: 4,
+    });
   });
 
   it("returns empty array when no issues pass filters", async () => {
@@ -198,7 +220,7 @@ describe("discoverIssues", () => {
     const filePath = join(tempDir, ".gittributor", "issues.json");
     const fileContents = await readFile(filePath, "utf8");
     const parsed = JSON.parse(fileContents) as Array<
-      Issue & { approachabilityScore: number; impactScore: number; codebaseScore: number; totalScore: number }
+      Issue & { approachabilityScore: number; impactScore: number; totalScore: number }
     >;
 
     expect(issues).toHaveLength(1);
@@ -206,7 +228,7 @@ describe("discoverIssues", () => {
     expect(parsed[0]?.number).toBe(99);
     expect(parsed[0]?.approachabilityScore).toBeGreaterThanOrEqual(0);
     expect(parsed[0]?.impactScore).toBeGreaterThanOrEqual(0);
-    expect(parsed[0]?.codebaseScore).toBeGreaterThanOrEqual(0);
+    expect(parsed[0]?.totalScore).toBe(parsed[0]!.approachabilityScore + parsed[0]!.impactScore);
   });
 
   it("builds a ranked issue proposal table for the top five issues", () => {
@@ -220,21 +242,19 @@ describe("discoverIssues", () => {
         }),
         approachabilityScore: 5,
         impactScore: 3,
-        codebaseScore: 2,
         totalScore: 10,
       },
       {
         ...makeIssue({ id: 2, number: 102, title: "Second issue", reactions: 2 }),
         approachabilityScore: 4,
         impactScore: 2,
-        codebaseScore: 1,
         totalScore: 7,
       },
     ]);
 
-    expect(table).toContain("TOP 5 FIXABLE ISSUES for owner/repo");
-    expect(table).toContain("[1] #101  Top issue   (score: 10)");
-    expect(table).toContain("Complexity: low | 👍 8 reactions");
-    expect(table).toContain("Run 'gittributor fix' to fix issue #101");
+    expect(table).toContain("PROPOSED ISSUES (top scored — ready for analysis)");
+    expect(table).toContain("#101");
+    expect(table).toContain("Top issue");
+    expect(table).toContain("score 10");
   });
 });
