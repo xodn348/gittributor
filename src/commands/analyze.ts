@@ -6,7 +6,7 @@ import type { Issue, Repository } from "../types";
 
 const ISSUE_LABELS = ["good first issue", "good-first-issue", "beginner", "help wanted"];
 const ISSUE_SEARCH_LIMIT = 50;
-const THIRTY_DAYS_IN_MS = 30 * 24 * 60 * 60 * 1000;
+const NINETY_DAYS_IN_MS = 90 * 24 * 60 * 60 * 1000;
 
 const REPRODUCTION_PATTERNS = [
   /steps to reproduce/i,
@@ -81,12 +81,12 @@ const isNotStale = (issue: Issue): boolean => {
     return false;
   }
 
-  return Date.now() - updatedAtMs <= THIRTY_DAYS_IN_MS;
+  return Date.now() - updatedAtMs <= NINETY_DAYS_IN_MS;
 };
 
 const hasClearDescription = (issue: Issue): boolean => {
   const body = issue.body ?? "";
-  return body.trim().length > 50;
+  return body.trim().length > 20;
 };
 
 const scoreApproachability = (issue: Issue): number => {
@@ -191,11 +191,13 @@ export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
     limit: ISSUE_SEARCH_LIMIT,
   });
 
-  const filtered = issues.filter((issue) => {
-    const isUnassigned = issue.assignees.length === 0;
+  const unassignedIssues = issues.filter((issue) => issue.assignees.length === 0);
+  const notStaleIssues = unassignedIssues.filter((issue) => isNotStale(issue));
+  const filtered = notStaleIssues.filter((issue) => hasClearDescription(issue));
 
-    return isUnassigned && isNotStale(issue) && hasClearDescription(issue);
-  });
+  debug(
+    `Filter stats for ${repo.fullName}: ${issues.length} fetched → ${unassignedIssues.length} unassigned → ${notStaleIssues.length} not stale → ${filtered.length} clear description/actionable`,
+  );
 
   const scored = filtered
     .map((issue) => {

@@ -72,7 +72,7 @@ const normalizeOptions = (options: DiscoverOptions): NormalizedDiscoverOptions =
 export const buildDiscoverQuery = (options: DiscoverOptions): string => {
   const normalizedOptions = normalizeOptions(options);
   const starsFilter = normalizedOptions.minStars > 0 ? `+stars:>=${normalizedOptions.minStars}` : "";
-  return `language:${normalizedOptions.language}${starsFilter}+good-first-issues:>0+created:>=${normalizedOptions.createdAfterText}&sort=stars&order=desc`;
+  return `language:${normalizedOptions.language}${starsFilter}+good-first-issues:>0+size:<50000+created:>=${normalizedOptions.createdAfterText}&sort=updated&order=desc`;
 };
 
 const hasGoodFirstIssueSignals = (repository: RepositoryWithGoodFirstIssueSignals): boolean => {
