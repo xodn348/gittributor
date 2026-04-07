@@ -298,8 +298,7 @@ describe("runPipelineCommand oversized repository fallback", () => {
       assignees: [],
       approachabilityScore: 3,
       impactScore: 2,
-      codebaseScore: 1,
-      totalScore: 6,
+      totalScore: 5,
     };
     const repoBIssue: ScoredIssue = {
       id: 2,
@@ -313,8 +312,7 @@ describe("runPipelineCommand oversized repository fallback", () => {
       assignees: [],
       approachabilityScore: 4,
       impactScore: 2,
-      codebaseScore: 1,
-      totalScore: 7,
+      totalScore: 6,
     };
 
     const runDiscoverCommandMock = mock(async (_runtimeConfig: Config, _commandArgs: string[]) => 0);

@@ -49,7 +49,7 @@ describe("callModel provider routing", () => {
     Bun.env.OPENAI_MODEL = "gpt-5-mini";
 
     const fetchMock = mock(async () =>
-      new Response(JSON.stringify({ output_text: "openai-route" }), {
+      new Response(JSON.stringify({ choices: [{ message: { content: "openai-route" } }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),

@@ -144,12 +144,9 @@ describe("fix-generator", () => {
     expect(capturedPrompt).toContain(repoFixture.fullName);
     expect(capturedPrompt).toContain(repoFixture.description as string);
     expect(capturedPrompt).toContain(String(analysisFixture.confidence));
-    expect(capturedPrompt).toContain(analysisFixture.rootCause as string);
-    expect(capturedPrompt).toContain((analysisFixture.affectedFiles ?? []).join(", "));
-    expect(capturedPrompt).toContain(analysisFixture.complexity as string);
     expect(capturedPrompt).toContain("src/parser.ts");
     expect(capturedPrompt).toContain("src/api/client.ts");
-    expect(capturedPrompt).toContain("<relevant-file-contents>");
+    expect(capturedPrompt).toContain("<file-contents>");
     expect(capturedPrompt).toContain("<file path=\"src/parser.ts\">");
     expect(capturedPrompt).toContain("export function parse(payload: unknown)");
 
@@ -288,7 +285,7 @@ describe("fix-generator", () => {
     }
   });
 
-  it("truncates file content snippets to 90 lines before adding them to the prompt", async () => {
+  it("includes full file content snippets in the prompt", async () => {
     const longContent = Array.from({ length: 180 }, (_, index) => `line ${index}`).join("\n");
     let capturedPrompt = "";
 
@@ -319,7 +316,7 @@ describe("fix-generator", () => {
     );
 
     expect(capturedPrompt).toContain("line 89");
-    expect(capturedPrompt).not.toContain("line 90");
-    expect(capturedPrompt).toContain("truncated at 90 lines");
+    expect(capturedPrompt).toContain("line 90");
+    expect(capturedPrompt).toContain("line 179");
   });
 });

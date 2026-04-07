@@ -13,9 +13,9 @@ describe("openai transport", () => {
     delete Bun.env.OPENAI_MODEL;
   });
 
-  test("uses oauth token when provided and returns output_text", async () => {
+  test("uses oauth token when provided and returns chat completion content", async () => {
     const fetchMock = mock(async () =>
-      new Response(JSON.stringify({ output_text: "ok" }), {
+      new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -37,7 +37,7 @@ describe("openai transport", () => {
   test("uses API key from env when oauth token is absent", async () => {
     Bun.env.OPENAI_API_KEY = "api-key";
     const fetchMock = mock(async () =>
-      new Response(JSON.stringify({ output: [{ content: [{ text: "from-output-array" }] }] }), {
+      new Response(JSON.stringify({ choices: [{ message: { content: "from-output-array" } }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
