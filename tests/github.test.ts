@@ -90,6 +90,12 @@ describe("GitHubClient", () => {
         "repos",
         "--stars=>=100",
         "--language=TypeScript",
+        "--size",
+        "<50000",
+        "--sort",
+        "updated",
+        "--order",
+        "desc",
         "--json",
         "name,fullName,stargazersCount,openIssuesCount,updatedAt,description",
         "--limit",
@@ -241,15 +247,64 @@ describe("GitHubClient", () => {
     });
   });
 
-  it("searchIssues returns empty list and warns when GitHub rate limit is hit", async () => {
+  it("searchIssues retries after rate limit errors and succeeds on a later attempt", async () => {
     const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    const debugSpy = spyOn(logger, "debug").mockImplementation(() => {});
+    const sleepSpy = spyOn(Bun, "sleep").mockResolvedValue(undefined);
 
-    spawnMock.mockReturnValue(
-      createMockProcess({
-        stderr: "HTTP 403: API rate limit exceeded for user ID 58055473.",
-        exitCode: 1,
-      }),
-    );
+    spawnMock
+      .mockReturnValueOnce(
+        createMockProcess({
+          stderr: "HTTP 403: API rate limit exceeded for user ID 58055473.",
+          exitCode: 1,
+        }),
+      )
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify([
+            {
+              number: 99,
+              title: "Recovered after retry",
+              body: "Details",
+              url: "https://github.com/owner/repo/issues/99",
+              labels: [{ name: "help wanted" }],
+              createdAt: "2026-03-31T00:00:00Z",
+              updatedAt: "2026-04-01T00:00:00Z",
+              commentsCount: 0,
+              assignees: [],
+            },
+          ]),
+        }),
+      )
+      .mockReturnValueOnce(
+        createMockProcess({
+          stdout: JSON.stringify({ reactions: { total_count: 0 } }),
+        }),
+      );
+
+    const client = new GitHubClient();
+    const result = await client.searchIssues("owner/repo", {
+      labels: ["help wanted"],
+      limit: 50,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.number).toBe(99);
+    expect(debugSpy).toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(sleepSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("searchIssues returns empty list and warns after exhausting rate limit retries", async () => {
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    const debugSpy = spyOn(logger, "debug").mockImplementation(() => {});
+    const sleepSpy = spyOn(Bun, "sleep").mockResolvedValue(undefined);
+
+    spawnMock
+      .mockReturnValueOnce(createMockProcess({ stderr: "HTTP 403: API rate limit exceeded for user ID 58055473.", exitCode: 1 }))
+      .mockReturnValueOnce(createMockProcess({ stderr: "HTTP 403: API rate limit exceeded for user ID 58055473.", exitCode: 1 }))
+      .mockReturnValueOnce(createMockProcess({ stderr: "HTTP 403: API rate limit exceeded for user ID 58055473.", exitCode: 1 }))
+      .mockReturnValueOnce(createMockProcess({ stderr: "HTTP 403: API rate limit exceeded for user ID 58055473.", exitCode: 1 }));
 
     const client = new GitHubClient();
     const result = await client.searchIssues("owner/repo", {
@@ -262,12 +317,16 @@ describe("GitHubClient", () => {
     expect(warnSpy).toHaveBeenCalledWith(
       "Skipping owner/repo because GitHub API rate limit was exceeded while searching issues.",
     );
+    expect(debugSpy).toHaveBeenCalled();
+    expect(sleepSpy).toHaveBeenCalledTimes(3);
   });
 
   it("searchIssues returns empty list when exit code 1 includes rate limit text", async () => {
     const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    const debugSpy = spyOn(logger, "debug").mockImplementation(() => {});
+    const sleepSpy = spyOn(Bun, "sleep").mockResolvedValue(undefined);
 
-    spawnMock.mockReturnValue(
+    spawnMock.mockImplementation(() =>
       createMockProcess({
         stderr: "API rate limit exceeded. Retry later.",
         exitCode: 1,
@@ -284,6 +343,8 @@ describe("GitHubClient", () => {
     expect(warnSpy).toHaveBeenCalledWith(
       "Skipping owner/repo because GitHub API rate limit was exceeded while searching issues.",
     );
+    expect(debugSpy).toHaveBeenCalled();
+    expect(sleepSpy).toHaveBeenCalledTimes(3);
   });
 
   it("searchIssues rethrows non-rate-limit 403 errors", async () => {
@@ -661,7 +722,7 @@ describe("GitHubClient", () => {
     });
   });
 
-  it("getFileTree returns an empty array when gh api fails", async () => {
+  it("getFileTree throws when gh api fails", async () => {
     spawnMock.mockReturnValue(
       createMockProcess({
         stderr: "not found",
@@ -671,6 +732,6 @@ describe("GitHubClient", () => {
 
     const client = new GitHubClient();
 
-    expect(client.getFileTree("owner/repo")).resolves.toEqual([]);
+    await expect(client.getFileTree("owner/repo")).rejects.toBeInstanceOf(GitHubAPIError);
   });
 });

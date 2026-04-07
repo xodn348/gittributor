@@ -43,6 +43,8 @@ const isIssueSearchRateLimitError = (error: unknown): error is GitHubAPIError =>
   return hasRateLimitSignal && (hasHttp403Signal || error.exitCode === 1);
 };
 
+const ISSUE_SEARCH_RETRY_DELAYS_MS = [1000, 2000, 4000] as const;
+
 export class GitHubClient {
   async searchRepositories(opts: {
     minStars: number;
@@ -59,6 +61,12 @@ export class GitHubClient {
         "repos",
         `--stars=>=${opts.minStars}`,
         `--language=${language}`,
+        "--size",
+        "<50000",
+        "--sort",
+        "updated",
+        "--order",
+        "desc",
         "--json",
         "name,fullName,stargazersCount,openIssuesCount,updatedAt,description",
         "--limit",
@@ -95,32 +103,42 @@ export class GitHubClient {
     const uniqueIssues = new Map<number, IssueSearchResult>();
 
     for (const label of labels) {
-      let stdout: string;
+      let stdout = "";
 
-      try {
-        stdout = await this.runCommand([
-          "gh",
-          "search",
-          "issues",
-          "--repo",
-          repoFullName,
-          "--label",
-          label,
-          "--state",
-          "open",
-          "--json",
-          "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
-          "--limit",
-          String(opts.limit),
-        ]);
-      } catch (error) {
-        if (isIssueSearchRateLimitError(error)) {
-          warn(`Skipping ${repoFullName} because GitHub API rate limit was exceeded while searching issues.`);
-          debug(`Issue discovery skipped for ${repoFullName}: ${error.message}`);
-          return [];
+      for (let attempt = 0; attempt <= ISSUE_SEARCH_RETRY_DELAYS_MS.length; attempt += 1) {
+        try {
+          stdout = await this.runCommand([
+            "gh",
+            "search",
+            "issues",
+            "--repo",
+            repoFullName,
+            "--label",
+            label,
+            "--state",
+            "open",
+            "--json",
+            "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
+            "--limit",
+            String(opts.limit),
+          ]);
+          break;
+        } catch (error) {
+          if (isIssueSearchRateLimitError(error)) {
+            if (attempt === ISSUE_SEARCH_RETRY_DELAYS_MS.length) {
+              warn(`Skipping ${repoFullName} because GitHub API rate limit was exceeded while searching issues.`);
+              debug(`Issue discovery skipped for ${repoFullName}: ${error.message}`);
+              return [];
+            }
+
+            const delay = ISSUE_SEARCH_RETRY_DELAYS_MS[attempt];
+            debug(`Rate limited while searching issues for ${repoFullName}; retrying label "${label}" in ${delay}ms (attempt ${attempt + 1}/${ISSUE_SEARCH_RETRY_DELAYS_MS.length}).`);
+            await Bun.sleep(delay);
+            continue;
+          }
+
+          throw error;
         }
-
-        throw error;
       }
 
       const data = this.parseJSON<IssueSearchResult[]>(stdout, "searchIssues");
