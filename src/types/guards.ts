@@ -2,13 +2,18 @@ import type {
   AnalysisResult,
   CommandName,
   Config,
+  ContributionOpportunity,
+  ContributionType,
   FixResult,
+  GuardrailCheck,
   Issue,
+  MergeProbability,
   PipelineState,
   PipelineStatus,
   PRSubmission,
   Repository,
   ReviewDecision,
+  TrendingRepo,
 } from "./index";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -178,3 +183,82 @@ export const isConfig = (value: unknown): value is Config => {
 export const isReviewDecision = (value: unknown): value is ReviewDecision => {
   return value === "approve" || value === "reject";
 };
+
+export const isContributionType = (value: unknown): value is ContributionType => {
+  return (
+    value === "typo" ||
+    value === "docs" ||
+    value === "deps" ||
+    value === "test" ||
+    value === "code"
+  );
+};
+
+export const isTrendingRepo = (value: unknown): value is TrendingRepo => {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.owner === "string" &&
+    typeof value.name === "string" &&
+    typeof value.fullName === "string" &&
+    typeof value.stars === "number" &&
+    (typeof value.language === "string" || value.language === null) &&
+    (typeof value.description === "string" || value.description === null) &&
+    typeof value.isArchived === "boolean" &&
+    typeof value.defaultBranch === "string" &&
+    typeof value.hasContributing === "boolean" &&
+    isStringArray(value.topics) &&
+    typeof value.openIssues === "number"
+  );
+};
+
+export const isMergeProbability = (value: unknown): value is MergeProbability => {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.score === "number" &&
+    (value.label === "high" || value.label === "medium" || value.label === "low") &&
+    isStringArray(value.reasons)
+  );
+};
+
+export const isContributionOpportunity = (value: unknown): value is ContributionOpportunity => {
+  if (!isRecord(value)) return false;
+
+  return (
+    isTrendingRepo(value.repo) &&
+    isContributionType(value.type) &&
+    typeof value.filePath === "string" &&
+    typeof value.description === "string" &&
+    isMergeProbability(value.mergeProbability) &&
+    typeof value.detectedAt === "string"
+  );
+};
+
+export const isContributionHistory = (value: unknown): value is ContributionHistory => {
+  if (!isRecord(value)) return false;
+
+  const validStatuses = ["pending", "submitted", "merged", "closed", "rejected"];
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.repo === "string" &&
+    isContributionType(value.type) &&
+    typeof value.description === "string" &&
+    typeof value.filePath === "string" &&
+    typeof value.branchName === "string" &&
+    validStatuses.includes(String(value.status)) &&
+    typeof value.createdAt === "string"
+  );
+};
+
+export const isGuardrailCheck = (value: unknown): value is GuardrailCheck => {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.passed === "boolean" &&
+    typeof value.reason === "string"
+  );
+};
+
+import type { ContributionHistory } from "./index";
