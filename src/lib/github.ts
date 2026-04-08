@@ -297,4 +297,53 @@ export class GitHubClient {
     return prNumber;
   }
 
+  async getRepoInfo(repoFullName: string): Promise<{
+    fullName: string;
+    diskUsage: number;
+    stargazerCount: number;
+    isArchived: boolean;
+    hasOpenUserPR?: boolean;
+    updatedAt: string;
+  }> {
+    const payload = await this.runCommand([
+      "gh",
+      "api",
+      `repos/${repoFullName}`,
+    ]);
+
+    const data = this.parseJSON<{
+      full_name: string;
+      disk_usage: number;
+      stargazers_count: number;
+      archived: boolean;
+      updated_at: string;
+    }>(payload, "getRepoInfo");
+
+    const hasOpenPR = await this.hasOpenUserPR(repoFullName);
+
+    return {
+      fullName: data.full_name,
+      diskUsage: data.disk_usage,
+      stargazerCount: data.stargazers_count,
+      isArchived: data.archived,
+      updatedAt: data.updated_at,
+      hasOpenUserPR: hasOpenPR,
+    };
+  }
+
+  private async hasOpenUserPR(repoFullName: string): Promise<boolean> {
+    try {
+      const payload = await this.runCommand([
+        "gh",
+        "api",
+        `repos/${repoFullName}/pulls?state=open&creator=@me`,
+      ]);
+
+      const data = this.parseJSON<Array<{ id: number }>>(payload, "hasOpenUserPR");
+      return data.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
 }

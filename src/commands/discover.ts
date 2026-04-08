@@ -98,20 +98,41 @@ const calculateMergeProbability = (repo: TrendingRepo): MergeProbability => {
   return { score, label, reasons };
 };
 
-const isActiveRecently = (repo: TrendingRepo): boolean => {
-  return repo.openIssues > 0;
+const getNinetyDaysAgo = (): Date => {
+  const date = new Date();
+  date.setDate(date.getDate() - DAYS_AGO_90);
+  date.setHours(0, 0, 0, 0);
+  return date;
 };
+
+const isActiveRecently = (repo: TrendingRepo & { lastUpdated?: string }): boolean => {
+  if (repo.lastUpdated) {
+    const updatedAt = new Date(repo.lastUpdated);
+    return updatedAt >= getNinetyDaysAgo();
+  }
+  if (repo.openIssues !== undefined && repo.openIssues !== null && repo.openIssues > 0) {
+    return true;
+  }
+  return true;
+};
+
+interface EnrichedTrendingRepo extends TrendingRepo {
+  lastUpdated?: string;
+  hasOpenPR?: boolean;
+}
 
 const enrichRepoWithGitHubInfo = async (
   repo: TrendingRepo,
   githubClient: GitHubClient
-): Promise<TrendingRepo> => {
+): Promise<EnrichedTrendingRepo> => {
   try {
     const repoInfo = await githubClient.getRepoInfo(repo.fullName);
     return {
       ...repo,
       isArchived: repoInfo.isArchived,
+      lastUpdated: repoInfo.updatedAt,
       openIssues: repoInfo.stargazerCount > 0 ? repo.openIssues : 0,
+      hasOpenPR: repoInfo.hasOpenUserPR,
     };
   } catch {
     debug(`Failed to enrich repo ${repo.fullName}, using defaults`);
@@ -124,7 +145,7 @@ const filterAndEnrichRepos = async (
   options: NormalizedDiscoverOptions
 ): Promise<TrendingRepo[]> => {
   const githubClient = new GitHubClient();
-  const enrichedRepos: TrendingRepo[] = [];
+  const enrichedRepos: EnrichedTrendingRepo[] = [];
 
   for (const repo of repos) {
     const enriched = await enrichRepoWithGitHubInfo(repo, githubClient);
@@ -132,6 +153,11 @@ const filterAndEnrichRepos = async (
     const eligibility = checkRepoEligibility(enriched.isArchived, enriched.stars);
     if (!eligibility.passed) {
       debug(`Filtered out ${repo.fullName}: ${eligibility.reason}`);
+      continue;
+    }
+
+    if (enriched.hasOpenPR) {
+      debug(`Filtered out ${repo.fullName}: user already has open PR`);
       continue;
     }
 
@@ -249,10 +275,12 @@ export async function discoverRepos(options: DiscoverOptions): Promise<TrendingR
   const yamlRepos = await loadTrendingRepos(config);
   
   if (yamlRepos.length > 0) {
+    debug(`YAML loaded repos: ${yamlRepos.length}, language: ${normalizedOptions.language}, minStars: ${normalizedOptions.minStars}`);
     const filtered = filterRepoList(yamlRepos, {
       languages: normalizedOptions.language ? [normalizedOptions.language] : undefined,
       minStars: normalizedOptions.minStars,
     });
+    debug(`After filter: ${filtered.length} repos`);
     info(`Filtered curated repos to ${filtered.length} by language/minStars`);
     
     trendingRepos = await filterAndEnrichRepos(filtered, normalizedOptions);
