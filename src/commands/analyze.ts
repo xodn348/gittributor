@@ -1,12 +1,27 @@
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { GitHubClient } from "../lib/github";
-import { debug, info } from "../lib/logger";
-import type { Issue, Repository } from "../types";
+import { tmpdir } from "os";
+import { GitHubClient } from "../lib/github.js";
+import { debug, info } from "../lib/logger.js";
+import { loadState, setStateData } from "../lib/state.js";
+import { checkRepoEligibility } from "../lib/guardrails.js";
+import {
+  detectTypos,
+  detectDocs,
+  detectDeps,
+  detectTests,
+  detectCode,
+  calculateMergeProbability,
+  sortOpportunities,
+  cloneRepoShallow,
+} from "../lib/contribution-detector.js";
+import type { Issue, Repository, TrendingRepo, ContributionOpportunity } from "../types/index.js";
 
 const ISSUE_LABELS = ["good first issue", "good-first-issue", "beginner", "help wanted"];
 const ISSUE_SEARCH_LIMIT = 50;
 const NINETY_DAYS_IN_MS = 90 * 24 * 60 * 60 * 1000;
+const MAX_REPOS = 10;
 
 const REPRODUCTION_PATTERNS = [
   /steps to reproduce/i,
@@ -222,4 +237,157 @@ export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
   printProposalTable(scored);
   debug(`Discovered ${scored.length} actionable issue(s) for ${repo.fullName}.`);
   return scored;
+}
+
+async function createTempRepoPath(repoFullName: string): Promise<string> {
+  return join(tmpdir(), `gittributor-analyze-${repoFullName.replace("/", "-")}-${Date.now()}`);
+}
+
+export async function analyzeSingleRepo(repo: TrendingRepo): Promise<ContributionOpportunity[]> {
+  const opportunities: ContributionOpportunity[] = [];
+  const tempPath = await createTempRepoPath(repo.fullName);
+
+  try {
+    info(`Analyzing ${repo.fullName}...`);
+    await cloneRepoShallow(repo.fullName, tempPath);
+
+    const readmePath = join(tempPath, "README.md");
+    const readmeContent = existsSync(readmePath) ? readFileSync(readmePath, "utf8") : "";
+
+    const filePaths = existsSync(tempPath) ? 
+      [...readdirSync(tempPath).map(f => join(tempPath, f))] : [];
+
+    const typoResults = detectTypos(readmeContent);
+    for (const typo of typoResults) {
+      const opp: ContributionOpportunity = {
+        repo,
+        type: "typo",
+        filePath: "README.md",
+        description: `Fix typo: "${typo.original}" → "${typo.replacement}"`,
+        original: typo.original,
+        replacement: typo.replacement,
+        mergeProbability: calculateMergeProbability({} as ContributionOpportunity, {
+          hasTests: false,
+          diffSize: 10,
+          followsContributingGuide: repo.hasContributing,
+          maintainerActivity: "high",
+        }),
+        detectedAt: new Date().toISOString(),
+      };
+      opportunities.push(opp);
+    }
+
+    const docsResults = detectDocs(readmeContent, filePaths, tempPath);
+    for (const doc of docsResults) {
+      const opp: ContributionOpportunity = {
+        repo,
+        type: "docs",
+        filePath: doc.filePath,
+        description: doc.description,
+        section: doc.section,
+        mergeProbability: calculateMergeProbability({} as ContributionOpportunity, {
+          hasTests: false,
+          diffSize: 50,
+          followsContributingGuide: repo.hasContributing,
+          maintainerActivity: "medium",
+        }),
+        detectedAt: new Date().toISOString(),
+      };
+      opportunities.push(opp);
+    }
+
+    const depsResults = await detectDeps(tempPath);
+    for (const dep of depsResults) {
+      const opp: ContributionOpportunity = {
+        repo,
+        type: "deps",
+        filePath: dep.packageName,
+        description: dep.description,
+        packageName: dep.packageName,
+        oldVersion: dep.oldVersion,
+        newVersion: dep.newVersion,
+        mergeProbability: calculateMergeProbability({} as ContributionOpportunity, {
+          hasTests: false,
+          diffSize: 30,
+          followsContributingGuide: repo.hasContributing,
+          maintainerActivity: "medium",
+        }),
+        detectedAt: new Date().toISOString(),
+      };
+      opportunities.push(opp);
+    }
+
+    const testResults = detectTests(tempPath);
+    for (const test of testResults) {
+      const opp: ContributionOpportunity = {
+        repo,
+        type: "test",
+        filePath: test.filePath,
+        description: test.description,
+        mergeProbability: calculateMergeProbability({} as ContributionOpportunity, {
+          hasTests: true,
+          diffSize: 100,
+          followsContributingGuide: repo.hasContributing,
+          maintainerActivity: "medium",
+        }),
+        detectedAt: new Date().toISOString(),
+      };
+      opportunities.push(opp);
+    }
+
+    const githubClient = new GitHubClient();
+    const issues = await githubClient.searchIssues(repo.fullName, {
+      labels: ISSUE_LABELS,
+      limit: ISSUE_SEARCH_LIMIT,
+    });
+    const codeResults = await detectCode(repo, issues);
+    for (const code of codeResults) {
+      const opp: ContributionOpportunity = {
+        repo,
+        type: "code",
+        filePath: "",
+        description: code.description,
+        mergeProbability: code.mergeProbability,
+        detectedAt: new Date().toISOString(),
+      };
+      opportunities.push(opp);
+    }
+
+  } catch (error) {
+    debug(`Error analyzing ${repo.fullName}: ${error}`);
+  } finally {
+    try {
+      rmSync(tempPath, { recursive: true, force: true });
+    } catch {}
+  }
+
+  return sortOpportunities(opportunities);
+}
+
+export async function analyzeRepositories(repos: TrendingRepo[]): Promise<ContributionOpportunity[]> {
+  const allOpportunities: ContributionOpportunity[] = [];
+  const eligibleRepos = repos.slice(0, MAX_REPOS);
+
+  for (const repo of eligibleRepos) {
+    const eligibility = checkRepoEligibility(repo.isArchived, repo.stars);
+    if (!eligibility.passed) {
+      debug(`Skipping ${repo.fullName}: ${eligibility.reason}`);
+      continue;
+    }
+
+    const opportunities = await analyzeSingleRepo(repo);
+    allOpportunities.push(...opportunities);
+  }
+
+  const sorted = sortOpportunities(allOpportunities);
+
+  await setStateData("contributionOpportunities", sorted);
+  info(`Found ${sorted.length} contribution opportunities across ${eligibleRepos.length} repositories.`);
+
+  return sorted;
+}
+
+function readdirSync(path: string) {
+  const fs = require("fs");
+  return fs.readdirSync(path);
 }
