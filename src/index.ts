@@ -407,10 +407,22 @@ const runDiscoverCommand = async (runtimeConfig: Config, commandArgs: string[]):
   });
   const currentState = await loadState();
 
+  const repositories = discoveredRepositories.map((r) => ({
+    id: 0,
+    name: r.name,
+    fullName: r.fullName,
+    url: `https://github.com/${r.fullName}`,
+    stars: r.stars,
+    language: r.language,
+    openIssuesCount: r.openIssues,
+    updatedAt: new Date().toISOString(),
+    description: r.description,
+  }));
+
   await saveState({
     ...currentState,
     status: "discovered",
-    repositories: discoveredRepositories,
+    repositories,
     issues: [],
     analyses: {},
     fixes: {},
