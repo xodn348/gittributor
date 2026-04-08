@@ -1,0 +1,211 @@
+repos:
+  - owner: facebook
+    name: react
+    stars: 220000
+    language: JavaScript
+    description: "The library for web and native user interfaces"
+    topics: ["javascript", "library", "ui"]
+    defaultBranch: main
+  - owner: facebook
+    name: react-native
+    stars: 115000
+    language: JavaScript
+    description: "A framework for building native apps with React"
+    topics: ["javascript", "mobile", "react-native"]
+    defaultBranch: main
+  - owner: vuejs
+    name: vue
+    stars: 206000
+    language: JavaScript
+    description: "The progressive JavaScript framework"
+    topics: ["javascript", "framework", "vue"]
+    defaultBranch: main
+  - owner: angular
+    name: angular
+    stars: 94000
+    language: TypeScript
+    description: "The modern web developer's platform"
+    topics: ["typescript", "framework", "angular"]
+    defaultBranch: main
+  - owner: microsoft
+    name: vscode
+    stars: 156000
+    language: TypeScript
+    description: "Code editing. Redefined."
+    topics: ["typescript", "editor", "ide"]
+    defaultBranch: main
+  - owner: microsoft
+    name: TypeScript
+    stars: 99000
+    language: TypeScript
+    description: "TypeScript is JavaScript with syntax for types"
+    topics: ["typescript", "language", "programming"]
+    defaultBranch: main
+  - owner: microsoft
+    name: playwright
+    stars: 68000
+    language: TypeScript
+    description: "Playwright is a framework for Web Testing and Automation"
+    topics: ["typescript", "testing", "automation"]
+    defaultBranch: main
+  - owner: vercel
+    name: next.js
+    stars: 116000
+    language: JavaScript
+    description: "The React Framework for the Web"
+    topics: ["javascript", "framework", "react"]
+    defaultBranch: canary
+  - owner: vitejs
+    name: vite
+    stars: 64000
+    language: TypeScript
+    description: "Next generation front-end tooling"
+    topics: ["typescript", "tooling", "build"]
+    defaultBranch: main
+  - owner: axios
+    name: axios
+    stars: 104000
+    language: JavaScript
+    description: "Promise based HTTP client for the browser and node.js"
+    topics: ["javascript", "http", "client"]
+    defaultBranch: master
+  - owner: expressjs
+    name: express
+    stars: 64000
+    language: JavaScript
+    description: "Fast, unopinionated, minimalist web framework for node.js"
+    topics: ["javascript", "framework", "nodejs"]
+    defaultBranch: master
+  - owner: fastify
+    name: fastify
+    stars: 30000
+    language: JavaScript
+    description: "Fast and low overhead web framework for Node.js"
+    topics: ["javascript", "framework", "nodejs"]
+    defaultBranch: main
+  - owner: prettier
+    name: prettier
+    stars: 49000
+    language: JavaScript
+    description: "Code formatter using opinionated format"
+    topics: ["javascript", "formatter", "linter"]
+    defaultBranch: main
+  - owner: eslint
+    name: eslint
+    stars: 24000
+    language: JavaScript
+    description: "Find and fix problems in your JavaScript code"
+    topics: ["javascript", "linter", "static-analysis"]
+    defaultBranch: main
+  - owner: biomejs
+    name: biome
+    stars: 28000
+    language: Rust
+    description: "Toolchain of the web"
+    topics: ["rust", "formatter", "linter"]
+    defaultBranch: main
+  - owner: sindresorhus
+    name: awesome
+    stars: 220000
+    language: Markdown
+    description: "Awesome lists about all kinds of interesting topics"
+    topics: ["awesome", "lists", "resources"]
+    defaultBranch: main
+  - owner: tensorflow
+    name: tensorflow
+    stars: 180000
+    language: Python
+    description: "An Open Source Machine Learning Framework"
+    topics: ["python", "machine-learning", "deep-learning"]
+    defaultBranch: master
+  - owner: pytorch
+    name: pytorch
+    stars: 78000
+    language: Python
+    description: "Tensors and dynamic neural networks in Python"
+    topics: ["python", "machine-learning", "deep-learning"]
+    defaultBranch: main
+  - owner: golang
+    name: go
+    stars: 115000
+    language: Go
+    description: "The Go programming language"
+    topics: ["go", "language", "programming"]
+    defaultBranch: master
+  - owner: kubernetes
+    name: kubernetes
+    stars: 109000
+    language: Go
+    description: "Production-grade container orchestration"
+    topics: ["go", "containers", "orchestration"]
+    defaultBranch: master
+  - owner: denoland
+    name: deno
+    stars: 93000
+    language: TypeScript
+    description: "A modern runtime for JavaScript and TypeScript"
+    topics: ["typescript", "runtime", "javascript"]
+    defaultBranch: main
+  - owner: oven-sh
+    name: bun
+    stars: 97000
+    language: Zig
+    description: "Incredibly fast JavaScript runtime, bundler, test runner"
+    topics: ["zig", "runtime", "javascript"]
+    defaultBranch: main
+  - owner: tailwindlabs
+    name: tailwindcss
+    stars: 77000
+    language: JavaScript
+    description: "A utility-first CSS framework for rapid UI development"
+    topics: ["javascript", "css", "framework"]
+    defaultBranch: main
+  - owner: pallets
+    name: flask
+    stars: 68000
+    language: Python
+    description: "A simple framework for building complex web applications"
+    topics: ["python", "framework", "web"]
+    defaultBranch: main
+  - owner: django
+    name: django
+    stars: 76000
+    language: Python
+    description: "The Web framework for perfectionists with deadlines"
+    topics: ["python", "framework", "web"]
+    defaultBranch: main
+  - owner: laravel
+    name: laravel
+    stars: 76000
+    language: PHP
+    description: "A PHP framework for web artisans"
+    topics: ["php", "framework", "web"]
+    defaultBranch: main
+  - owner: spring-projects
+    name: spring-boot
+    stars: 56000
+    language: Java
+    description: "Creates stand-alone, production-grade Spring-based applications"
+    topics: ["java", "framework", "spring"]
+    defaultBranch: main
+  - owner: rust-lang
+    name: rust
+    stars: 94000
+    language: Rust
+    description: "Empowering everyone to build reliable and efficient software"
+    topics: ["rust", "language", "programming"]
+    defaultBranch: master
+  - owner: torvalds
+    name: linux
+    stars: 190000
+    language: C
+    description: "Kernel source tree"
+    topics: ["c", "kernel", "operating-system"]
+    defaultBranch: master
+  - owner: docker
+    name: compose
+    stars: 32000
+    language: Go
+    description: "Define and run multi-container applications"
+    topics: ["go", "docker", "containers"]
+    defaultBranch: main

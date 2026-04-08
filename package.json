@@ -14,9 +14,13 @@
     "build": "bun build ./src/index.ts --outdir=./dist --target=bun"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.1"
   }
 }
