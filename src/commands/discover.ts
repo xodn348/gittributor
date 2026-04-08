@@ -149,6 +149,7 @@ const filterAndEnrichRepos = async (
 
   for (const repo of repos) {
     const enriched = await enrichRepoWithGitHubInfo(repo, githubClient);
+    debug(`Enriched ${repo.fullName}: isArchived=${enriched.isArchived}, lastUpdated=${enriched.lastUpdated}, hasOpenPR=${enriched.hasOpenPR}`);
     
     const eligibility = checkRepoEligibility(enriched.isArchived, enriched.stars);
     if (!eligibility.passed) {
@@ -275,12 +276,10 @@ export async function discoverRepos(options: DiscoverOptions): Promise<TrendingR
   const yamlRepos = await loadTrendingRepos(config);
   
   if (yamlRepos.length > 0) {
-    debug(`YAML loaded repos: ${yamlRepos.length}, language: ${normalizedOptions.language}, minStars: ${normalizedOptions.minStars}`);
     const filtered = filterRepoList(yamlRepos, {
       languages: normalizedOptions.language ? [normalizedOptions.language] : undefined,
       minStars: normalizedOptions.minStars,
     });
-    debug(`After filter: ${filtered.length} repos`);
     info(`Filtered curated repos to ${filtered.length} by language/minStars`);
     
     trendingRepos = await filterAndEnrichRepos(filtered, normalizedOptions);

@@ -65,3 +65,12 @@
 - Real-world test: user has open PRs in many repos, causing all YAML repos to be filtered out
 - buildDiscoverQuery uses pushed:>=90days instead of created:>=
 - TDD: wrote tests first (RED), then implemented (GREEN), all 12 tests pass
+
+## [2026-04-08] Task: T4 - Implementation Details (Additional)
+- detectTests(): compares source file basenames with test file basenames to find untested files
+- detectTypos(): scans README.md/docs for common misspellings (teh→the, recieve→receive)
+- detectDeps(): checks package.json (npm) and requirements.txt (pip) for outdated deps
+- analyze.ts wraps clone in try/catch - if repo doesn't exist, no opportunities found
+- Tests mock GitHub client but don't mock file operations - require actual repo content
+- TypeScript: use explicit type annotation for map callbacks to avoid implicit any
+- DepResult requires description field for merge probability calculation

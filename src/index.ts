@@ -401,7 +401,7 @@ const buildPersistedFixResult = (
 const runDiscoverCommand = async (runtimeConfig: Config, commandArgs: string[]): Promise<number> => {
   const parsedArgs = parseArgs(commandArgs);
   const discoveredRepositories = await discoverRepos({
-    language: parsedArgs.flags.language ?? runtimeConfig.targetLanguages[0],
+    language: parsedArgs.flags.language,
     minStars: parsedArgs.flags.minStars ?? runtimeConfig.minStars,
     limit: parsedArgs.flags.maxResults,
   });
