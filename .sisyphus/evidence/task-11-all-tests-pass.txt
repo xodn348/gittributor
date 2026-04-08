@@ -1,1 +1,84 @@
 bun test v1.3.9 (cf6cdbbb)
+[36m[1m[INFO][0m Pipeline state saved (submitted).
+
+tests/submit.test.ts:
+Command failed: git -C .gittributor/workspace/hello-world push origin gittributor/fix-17 (exit 1) push rejected
+[36m[1m[INFO][0m Pipeline state saved (submit_failed).
+Cannot submit: fix was not approved
+[36m[1m[INFO][0m Pipeline state saved (submit_failed).
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   PROPOSED ISSUES (top scored — ready for analysis)
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   #2      [score 2 ] Issue title
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   PROPOSED ISSUES (top scored — ready for analysis)
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   #2      [score 2 ] Issue title
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   PROPOSED ISSUES (top scored — ready for analysis)
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   #30     [score 2 ] Issue title
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   PROPOSED ISSUES (top scored — ready for analysis)
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   #40     [score 0 ] Issue title
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   PROPOSED ISSUES (top scored — ready for analysis)
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   #10     [score 8 ] High score issue
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m   #11     [score 0 ] Lower score issue
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   PROPOSED ISSUES (top scored — ready for analysis)
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   #20     [score 4 ] Auth bug in auth service
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   PROPOSED ISSUES (top scored — ready for analysis)
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   #21     [score 4 ] Auth issue
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m No actionable issues found.
+[36m[1m[INFO][0m Discovering issues for owner/repo...
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   PROPOSED ISSUES (top scored — ready for analysis)
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m   #99     [score 8 ] Issue title
+[36m[1m[INFO][0m            https://github.com/owner/repo/issues/1
+[36m[1m[INFO][0m ────────────────────────────────────────────────────────────────────────────────
+[36m[1m[INFO][0m Searching repositories with query: language:TypeScript+stars:>=100+good-first-issues:>0+size:<50000+created:>=2026-04-01&sort=updated&order=desc
+[32m[1mRepository                      Stars     Language        Good First Issues     URL
+octo/good                       120       TypeScript      3                     https://github.com/octo/good[0m
+[36m[1m[INFO][0m Searching repositories with query: language:TypeScript+good-first-issues:>0+size:<50000+created:>=2026-04-01&sort=updated&order=desc
+No repositories found with good first issues.
+[36m[1m[INFO][0m Pipeline state saved (discovered).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (fixed).
+
+ 231 pass
+ 3 skip
+ 0 fail
+ 643 expect() calls
+Ran 234 tests across 25 files. [520.00ms]
