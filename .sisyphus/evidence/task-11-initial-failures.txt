@@ -83,7 +83,7 @@ Expected length: 1
 Received length: 0
 
       at <anonymous> (/Users/jnnj92/gittributor/tests/discover.test.ts:70:20)
-(fail) discoverRepos > filters repositories to include only repos with good-first-issue signals [1.49ms]
+(fail) discoverRepos > filters repositories to include only repos with good-first-issue signals [0.79ms]
 [36m[1m[INFO][0m Searching repositories with query: language:TypeScript+good-first-issues:>0+size:<50000+created:>=2026-04-01&sort=updated&order=desc
 No repositories found with good first issues.
 111 | 
@@ -99,15 +99,15 @@ Expected to contain: "\u001B[32m"
 Received: "\u001B[36m\u001B[1m[INFO]\u001B[0m Searching repositories with query: language:Go+stars:>=100+good-first-issues:>0+size:<50000+created:>=2026-04-01&sort=updated&order=desc\nNo repositories found with good first issues.\n"
 
       at <anonymous> (/Users/jnnj92/gittributor/tests/discover.test.ts:116:20)
-(fail) discoverRepos > writes ANSI-formatted discovery table to stdout [1.28ms]
+(fail) discoverRepos > writes ANSI-formatted discovery table to stdout [0.64ms]
 [36m[1m[INFO][0m Pipeline state saved (discovered).
 [36m[1m[INFO][0m Pipeline state saved (idle).
 [36m[1m[INFO][0m Pipeline state saved (idle).
 [36m[1m[INFO][0m Pipeline state saved (idle).
 [36m[1m[INFO][0m Pipeline state saved (fixed).
 
- 215 pass
+ 229 pass
  3 skip
  2 fail
- 574 expect() calls
-Ran 220 tests across 25 files. [615.00ms]
+ 638 expect() calls
+Ran 234 tests across 25 files. [505.00ms]
