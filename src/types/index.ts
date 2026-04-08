@@ -74,6 +74,20 @@ export interface RepoInfo {
   hasOpenUserPR?: boolean;
 }
 
+export interface TrendingRepo {
+  owner: string;
+  name: string;
+  fullName: string;
+  stars: number;
+  language: string | null;
+  description: string | null;
+  isArchived: boolean;
+  defaultBranch: string;
+  hasContributing: boolean;
+  topics: string[];
+  openIssues: number;
+}
+
 export type PipelineStatus =
   | "idle"
   | "discovered"
@@ -105,6 +119,58 @@ export interface Config {
   maxPRsPerRepo: number;
   targetLanguages: string[];
   verbose: boolean;
+  repoListPath: string;
+  maxPRsPerWeekPerRepo: number;
+  maxPRsPerHour: number;
+  contributionTypes: ContributionType[];
+  historyPath: string;
+  dryRun: boolean;
 }
 
 export type ReviewDecision = "approve" | "reject";
+
+export type ContributionType = "typo" | "docs" | "deps" | "test" | "code";
+
+export interface GuardrailCheck {
+  passed: boolean;
+  reason: string;
+  blockedBy?: string;
+}
+
+export interface MergeProbability {
+  score: number;
+  label: "high" | "medium" | "low";
+  reasons: string[];
+}
+
+export interface ContributionOpportunity {
+  repo: TrendingRepo;
+  type: ContributionType;
+  filePath: string;
+  description: string;
+  original?: string;
+  replacement?: string;
+  section?: string;
+  packageName?: string;
+  oldVersion?: string;
+  newVersion?: string;
+  mergeProbability: MergeProbability;
+  detectedAt: string;
+}
+
+export type ContributionStatus = "pending" | "submitted" | "merged" | "closed" | "rejected";
+
+export interface ContributionHistory {
+  id: string;
+  repo: string;
+  type: ContributionType;
+  description: string;
+  filePath: string;
+  branchName: string;
+  prNumber?: number;
+  prUrl?: string;
+  status: "pending" | "submitted" | "merged" | "closed" | "rejected";
+  createdAt: string;
+  submittedAt?: string;
+  mergedAt?: string;
+}
