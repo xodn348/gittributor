@@ -40,6 +40,7 @@ const parseCreatedAfter = (createdAfter?: string): Date => {
   if (!createdAfter) {
     const defaultDate = new Date();
     defaultDate.setDate(defaultDate.getDate() - DEFAULT_DAYS_BACK);
+    defaultDate.setHours(0, 0, 0, 0);
     return defaultDate;
   }
 
@@ -47,6 +48,7 @@ const parseCreatedAfter = (createdAfter?: string): Date => {
   if (Number.isNaN(parsed.getTime())) {
     const fallbackDate = new Date();
     fallbackDate.setDate(fallbackDate.getDate() - DEFAULT_DAYS_BACK);
+    fallbackDate.setHours(0, 0, 0, 0);
     return fallbackDate;
   }
 
