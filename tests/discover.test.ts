@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -319,4 +319,15 @@ describe("discover command - TDD for trending repos", () => {
 
     expect(GitHubClient.prototype.getRepoInfo).toHaveBeenCalled();
   });
+});
+
+afterAll(async () => {
+  try {
+    const configModule = await import("../src/lib/config.js?nocache=" + Date.now());
+    mock.module("../src/lib/config.js", () => ({
+      loadConfig: configModule.loadConfig,
+      ConfigError: configModule.ConfigError,
+    }));
+  } catch {
+  }
 });
