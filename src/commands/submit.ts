@@ -1,13 +1,24 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { loadState, saveState, transition, getStateData } from "../lib/state";
-import type { FixResult, PRSubmission, PipelineState, PipelineStatus } from "../types";
+import { loadState, saveState, transition, getStateData } from "../lib/state.js";
+import { loadConfig } from "../lib/config.js";
+import { checkRateLimit, checkDuplicateContribution, checkRepoEligibility, recordSubmission } from "../lib/guardrails.js";
+import { saveContribution } from "../lib/history.js";
+import { checkContributingCompliance } from "../lib/contributing-checker.js";
+import type { FixResult, PRSubmission, PipelineState, PipelineStatus, ContributionOpportunity, ContributionType } from "../types/index.js";
 
 const WORKSPACE_ROOT = ".gittributor/workspace";
 const AI_DISCLOSURE =
   process.env.GITTRIBUTOR_AI_PROVIDER === "openai"
     ? "This fix was generated with AI assistance (OpenAI) and reviewed by a human."
     : "This fix was generated with AI assistance (Anthropic Claude) and reviewed by a human.";
+
+export interface SubmitOptions {
+  rateLimitsPath?: string;
+  historyPath?: string;
+  dryRun?: boolean;
+  skipIssueCheck?: boolean;
+}
 
 interface FixChange {
   file: string;
@@ -197,7 +208,54 @@ const buildSubmissionRecord = (
   };
 };
 
-const createPRBody = (issueNumber: number, fix: FixResultWithChanges): string => {
+const createTypoPRBody = (opportunity: ContributionOpportunity): string => {
+  const original = opportunity.original || "";
+  const replacement = opportunity.replacement || "";
+  const file = opportunity.filePath;
+
+  return [
+    `Fix typo: \`${original}\` → \`${replacement}\` in \`${file}\``,
+    "",
+    AI_DISCLOSURE,
+  ].join("\n");
+};
+
+const createDocsPRBody = (opportunity: ContributionOpportunity): string => {
+  const section = opportunity.section || "documentation";
+
+  return [
+    `Add missing \`${section}\` section to README`,
+    "",
+    AI_DISCLOSURE,
+  ].join("\n");
+};
+
+const createDepsPRBody = (opportunity: ContributionOpportunity): string => {
+  const packageName = opportunity.packageName || "dependency";
+  const oldVersion = opportunity.oldVersion || "";
+  const newVersion = opportunity.newVersion || "";
+
+  return [
+    `Bump \`${packageName}\` from \`${oldVersion}\` to \`${newVersion}\``,
+    "",
+    AI_DISCLOSURE,
+  ].join("\n");
+};
+
+const createPRBody = (issueNumber: number, fix: FixResultWithChanges, opportunity?: ContributionOpportunity): string => {
+  if (opportunity) {
+    const type = opportunity.type;
+    if (type === "typo") {
+      return createTypoPRBody(opportunity);
+    }
+    if (type === "docs") {
+      return createDocsPRBody(opportunity);
+    }
+    if (type === "deps") {
+      return createDepsPRBody(opportunity);
+    }
+  }
+
   const changedFiles = fix.changes.map((change) => `- \`${change.file}\``).join("\n");
   const summary = shortDescription(fix.explanation);
 
@@ -266,7 +324,32 @@ const applyFixChanges = async (workspacePath: string, fix: FixResultWithChanges)
   }
 };
 
-export const submitApprovedFix = async (): Promise<number> => {
+const findMatchingOpportunity = (
+  opportunities: ContributionOpportunity[],
+  repoFullName: string,
+  filePath: string,
+): ContributionOpportunity | undefined => {
+  return opportunities.find(
+    (opp) =>
+      opp.repo.fullName === repoFullName &&
+      opp.filePath === filePath
+  );
+};
+
+const getContributionType = (
+  opportunities: ContributionOpportunity[],
+  repoFullName: string,
+  filePath: string,
+): ContributionType => {
+  const match = findMatchingOpportunity(opportunities, repoFullName, filePath);
+  return match?.type || "code";
+};
+
+export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<number> => {
+  const config = await loadConfig();
+  const rateLimitsPath = options.rateLimitsPath || ".gittributor/rate-limits.json";
+  const historyPath = options.historyPath || config.historyPath || ".gittributor/history.json";
+
   const state = await loadState();
   const reviewState = getStateData<ReviewStateData>("review");
   const stateData: SubmissionStateData = {
@@ -303,6 +386,44 @@ export const submitApprovedFix = async (): Promise<number> => {
       throw new Error(`Cannot submit: invalid repository name '${repoFullName}'`);
     }
 
+    const contributionOpportunities = getStateData<ContributionOpportunity[]>("contributionOpportunities") || [];
+    const primaryFilePath = fix.changes[0]?.file || "";
+    const contributionType = getContributionType(contributionOpportunities, repoFullName, primaryFilePath);
+
+    const rateLimitCheck = await checkRateLimit(repoFullName, rateLimitsPath);
+    if (!rateLimitCheck.passed) {
+      throw new Error(`Cannot submit: ${rateLimitCheck.reason}`);
+    }
+
+    const duplicateCheck = await checkDuplicateContribution(
+      repoFullName,
+      primaryFilePath,
+      contributionType,
+      historyPath,
+    );
+    if (!duplicateCheck.passed) {
+      throw new Error(`Cannot submit: ${duplicateCheck.reason}`);
+    }
+
+    const matchingOpportunity = findMatchingOpportunity(contributionOpportunities, repoFullName, primaryFilePath);
+    const repoIsArchived = matchingOpportunity?.repo.isArchived ?? false;
+    const repoStars = matchingOpportunity?.repo.stars ?? 0;
+    const eligibleCheck = checkRepoEligibility(repoIsArchived, repoStars);
+    if (!eligibleCheck.passed) {
+      throw new Error(`Cannot submit: ${eligibleCheck.reason}`);
+    }
+
+    if (options.dryRun) {
+      const prTitle = `fix(#${issue.number}): ${shortDescription(issue.title)}`;
+      const opportunity = findMatchingOpportunity(contributionOpportunities, repoFullName, primaryFilePath);
+      const prBody = createPRBody(issue.number, fix, opportunity);
+      console.log("\n=== PR Preview (dry-run) ===");
+      console.log(`Title: ${prTitle}`);
+      console.log(`Body:\n${prBody}`);
+      console.log("=============================\n");
+      return 0;
+    }
+
     const branchName = `gittributor/fix-${issue.number}`;
     const workspacePath = join(WORKSPACE_ROOT, repoName);
 
@@ -311,6 +432,17 @@ export const submitApprovedFix = async (): Promise<number> => {
     const forkOwner = extractRepoOwner(forkUrl);
 
     await runCommand(["git", "clone", "--depth=1", forkUrl, workspacePath]);
+
+    const compliance = await checkContributingCompliance(workspacePath);
+    if (compliance.hasCLA) {
+      await rm(workspacePath, { recursive: true, force: true });
+      throw new Error("Cannot submit: CLA required for this repository");
+    }
+
+    if (compliance.requiresIssueFirst && !options.skipIssueCheck) {
+      console.warn("Warning: Repository requires opening an issue before PR. Proceeding anyway...");
+    }
+
     await runCommand(["git", "-C", workspacePath, "checkout", "-b", branchName]);
 
     await applyFixChanges(workspacePath, fix);
@@ -321,7 +453,8 @@ export const submitApprovedFix = async (): Promise<number> => {
     await runCommand(["git", "-C", workspacePath, "push", "origin", branchName]);
 
     const prTitle = commitTitle;
-    const prBody = createPRBody(issue.number, fix);
+    const opportunity = findMatchingOpportunity(contributionOpportunities, repoFullName, primaryFilePath);
+    const prBody = createPRBody(issue.number, fix, opportunity);
     const prOutput = await runCommand([
       "gh",
       "pr",
@@ -337,6 +470,22 @@ export const submitApprovedFix = async (): Promise<number> => {
     ]);
     const prUrl = extractGitHubUrl(prOutput, "gh pr create");
     const submissionRecord = buildSubmissionRecord(issueId, repoFullName, prUrl, branchName);
+
+    await saveContribution(
+      {
+        repo: repoFullName,
+        type: contributionType,
+        description: fix.explanation,
+        filePath: primaryFilePath,
+        branchName,
+        prNumber: submissionRecord.prNumber,
+        prUrl,
+        status: "submitted",
+      },
+      historyPath,
+    );
+
+    await recordSubmission(repoFullName, rateLimitsPath);
 
     await updateState(state, transition(state.status, "submitted"), {
       prUrl,

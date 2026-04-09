@@ -1,0 +1,23 @@
+bun test v1.3.9 (cf6cdbbb)
+[36m[1m[INFO][0m Pipeline state saved (submit_failed).
+[36m[1m[INFO][0m Pipeline state saved (submit_failed).
+[36m[1m[INFO][0m Pipeline state saved (submit_failed).
+[36m[1m[INFO][0m Pipeline state saved (submitted).
+[36m[1m[INFO][0m Pipeline state saved (submitted).
+[36m[1m[INFO][0m Pipeline state saved (submitted).
+
+=== PR Preview (dry-run) ===
+Title: fix(#17): Fix flaky parser trim path
+Body:
+Fixes #17
+
+This fix was generated with AI assistance (Anthropic Claude) and reviewed by a human.
+
+## Summary of changes
+- `src/parser.ts`
+
+## Why
+Normalize whitespace parsing for empty input.
+=============================
+
+[36m[1m[INFO][0m Pipeline state saved (submit_failed).
