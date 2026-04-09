@@ -115,3 +115,60 @@
 - Read-only: reviewContributions does NOT modify state (getStateData only)
 - Uses ANSI_RESET, ANSI_GREEN, ANSI_YELLOW, ANSI_RED escape codes
 - TypeScript: getStateData<T>(key) returns typed data from pipeline state
+
+## review.ts Multi-Type Contributions Feature (2026-04-09)
+
+### What was implemented:
+1. Added `parseTypeFilter` function to parse `--type` flag from CLI args
+2. The `reviewContributions` function already existed with full grouping/color-coding/summary support
+3. All tests pass (337 pass, 0 fail)
+
+### Key patterns observed:
+- ANSI color codes: `\x1b[32m` (green), `\x1b[33m` (yellow), `\x1b[31m` (red), `\x1b[0m` (reset)
+- Contribution types: `typo`, `docs`, `deps`, `test`, `code`
+- Merge probability thresholds: >0.7 (high/green), 0.4-0.7 (medium/yellow), <0.4 (low/red)
+- Read-only command pattern: review.ts does NOT modify state
+
+### Files modified:
+- `src/commands/review.ts`: Added `parseTypeFilter` function
+- `tests/review.test.ts`: Added tests for `parseTypeFilter`
+
+## T9: Submit Guardrail Checks
+
+### Key Findings
+
+1. **Dry-run must check BEFORE fork**: The dry-run flag must be checked BEFORE any git operations. Moving the check to after fork/clone caused the dry-run test to fail.
+
+2. **Module mocking in bun:test**: Using `mock.module()` requires the module to be imported AFTER the mock is set up. But dynamic imports make this tricky. The tests ended up relying on real guardrail functions that read from files.
+
+3. **Guardrail execution order**:
+   - checkRateLimit (BEFORE fork)
+   - checkDuplicateContribution (BEFORE fork)
+   - checkRepoEligibility (BEFORE fork)
+   - dry-run check (BEFORE fork)
+   - fork and clone (spawn calls)
+   - checkContributingCompliance (AFTER clone, needs local files)
+   - CLA: ALWAYS blocks
+   - Issue-first: WARN but proceed
+
+4. **Test isolation**: Each test needs its own temp directory and file setup. Using `process.chdir()` to tempDir ensures file operations use correct paths.
+
+5. **Mocking complexity**: Tests that need to mock git commands are complex. Simplified tests that verify behavior via exit codes and state persistence work better.
+
+## T10: Run Orchestrator V2 Pipeline
+
+### Key Findings
+
+1. **Pure Dependency Injection**: `runOrchestrator(options, deps)` takes ALL dependencies as parameters. No module-level imports of pipeline functions. This makes testing trivial - just pass mock functions.
+
+2. **Module-level imports cause test interference**: When run.ts imported pipeline functions at module level, `spyOn` on dynamically imported modules didn't prevent the real implementations from running in subsequent tests. Removing all module-level imports and using pure DI fixed this.
+
+3. **`makeDeps` helper pattern**: Create a function that returns a full deps object with sensible defaults, then override specific ones in each test. This avoids TypeScript errors about missing properties.
+
+4. **No `process.chdir()` needed**: Tests that don't need temp directory state don't need chdir. `parseRunFlags` and simple `runOrchestrator` calls with mocked deps work without changing cwd.
+
+5. **`spyOn` on dynamic imports doesn't work**: `spyOn(await import('./module.js'), 'fn')` doesn't prevent the original function from running in Bun. The spy records calls but the real implementation still executes. Always use dependency injection instead.
+
+6. **`RunDependencies` interface must include ALL used functions**: Including `setStateData`, `loadState`, `saveState` from state.ts, not just the pipeline stage functions.
+
+7. **Test isolation with console output**: Multiple tests running together cause console.log interleaving. This makes debugging hard. Use pure DI to ensure mocks control all behavior.
