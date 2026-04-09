@@ -180,7 +180,7 @@ Max Concurrent: 5 (Wave 1)
 
 ## TODOs
 
-- [ ] 0. **V2 Type System — New types for multi-type contributions**
+- [x] 0. **V2 Type System — New types for multi-type contributions**
 
   **What to do**:
   - Add `ContributionType` union: `"docs" | "typo" | "deps" | "test" | "code"`
@@ -250,7 +250,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/types/index.ts`, `tests/types.test.ts`
   - Pre-commit: `bun test tests/types.test.ts`
 
-- [ ] 1. **Curated Repository YAML List + Loader**
+- [x] 1. **Curated Repository YAML List + Loader**
 
   **What to do**:
   - Create `repos.yaml` at project root with 30+ curated trending/famous repos organized by category:
@@ -393,7 +393,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/commands/discover.ts`, `tests/discover.test.ts`
   - Pre-commit: `bun test tests/discover.test.ts`
 
-- [ ] 3. **Anti-Spam Guardrails Module**
+- [x] 3. **Anti-Spam Guardrails Module**
 
   **What to do**:
   - Create `src/lib/guardrails.ts` with:
@@ -530,7 +530,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/commands/analyze.ts`, `src/lib/contribution-detector.ts`, `tests/analyze.test.ts`, `tests/contribution-detector.test.ts`
   - Pre-commit: `bun test tests/analyze.test.ts`
 
-- [ ] 5. **Contribution History Tracker**
+- [x] 5. **Contribution History Tracker**
 
   **What to do**:
   - Create `src/lib/history.ts` with:
@@ -949,7 +949,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/commands/run.ts`, `tests/run.test.ts`
   - Pre-commit: `bun test tests/run.test.ts`
 
-- [ ] 11. **Fix Existing Failing Tests**
+- [x] 11. **Fix Existing Failing Tests**
 
   **What to do**:
   - Run `bun test` to identify all currently failing tests

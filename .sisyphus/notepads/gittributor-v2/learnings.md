@@ -74,3 +74,22 @@
 - Tests mock GitHub client but don't mock file operations - require actual repo content
 - TypeScript: use explicit type annotation for map callbacks to avoid implicit any
 - DepResult requires description field for merge probability calculation
+
+## [2026-04-08] Task: T12 - V2 Config Schema
+- Added V2 fields to loadConfig(): repoListPath, maxPRsPerWeekPerRepo, maxPRsPerHour, contributionTypes, historyPath, dryRun
+- Defaults: repoListPath="repos.yaml", maxPRsPerWeekPerRepo=2, maxPRsPerHour=3, contributionTypes=["docs","typo","deps","test","code"], historyPath=".gittributor/history.json", dryRun=false
+- Added readProjectConfig() for project-local .gittributorrc.json in CWD
+- Merge order: defaults → global (~/.gittributorrc.json) → project-local (.gittributorrc.json)
+- Validation: console.warn on unknown fields, throw ConfigError on invalid types
+- V1 config preserved exactly (backward compatible)
+- Tests: 12 tests covering defaults, V1→V2 defaults, project-local override, validation
+
+## [2026-04-08] Task: T6 - Fix Router + AI-Free Detectors
+- fix-router.ts: routeContribution(opportunity) routes by ContributionType
+- typo/docs/deps paths: deterministic, no AI calls
+- test/code paths: use src/lib/ai.ts abstraction (callModel)
+- typo-detector.ts: 430+ common misspellings word list, scans .md/.txt/.rst files
+- docs-detector.ts: checks README sections (Installation/Usage/Contributing/License)
+- deps-detector.ts: parsePackageJson(), checkOutdatedDeps() with npm registry fetch, generateVersionBump()
+- ESM imports: use .js extension in all TypeScript imports
+- Tests: all 39 tests pass across fix-router.test.ts, typo-detector.test.ts, docs-detector.test.ts, deps-detector.test.ts
