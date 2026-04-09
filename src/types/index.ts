@@ -174,3 +174,10 @@ export interface ContributionHistory {
   submittedAt?: string;
   mergedAt?: string;
 }
+
+export interface ComplianceResult {
+  hasCLA: boolean;
+  requiresIssueFirst: boolean;
+  hasPRTemplate: boolean;
+  prTemplateContent: string | null;
+}
