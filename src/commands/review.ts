@@ -175,7 +175,19 @@ export async function reviewFixes(
     return 1;
   }
 
-  const fixPayload = await loadFixPayload();
+  let fixPayload: FixReviewPayload;
+  try {
+    fixPayload = await loadFixPayload();
+  } catch (err) {
+    const isNotFound = err instanceof Error && err.message.includes("ENOENT");
+    if (isNotFound) {
+      const message = "No fixes available for review. Run 'fix' command first.";
+      io.stderr.write(`${message}\n`);
+      process.exitCode = 1;
+      return 1;
+    }
+    throw err;
+  }
   writeFixSummary(fixPayload, io);
 
   let action: "a" | "r" | "s";
