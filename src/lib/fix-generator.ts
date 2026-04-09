@@ -165,10 +165,10 @@ function buildPrompt(analysis: AnalysisResult, issue: Issue, repo: Repository): 
   ].join("\n\n");
 }
 
-async function persistFixResult(issue: Issue, result: FixResult): Promise<void> {
+async function persistFixResult(issue: Issue, fixResult: FixResult): Promise<void> {
   const outputDirectory = join(process.cwd(), ".gittributor");
   const persistedResult: PersistedFixResult = {
-    ...result,
+    ...fixResult,
     issue: {
       title: issue.title,
       description: issue.body ?? "(no body)",
@@ -234,7 +234,7 @@ export async function generateFix(
   const changes = parseFixChanges(parsedPayload.changes);
   validateFixScope(changes, analysis.relevantFiles);
 
-  const result: FixResult = {
+  const fixResult: FixResult = {
     changes,
     explanation:
       typeof parsedPayload.explanation === "string"
@@ -243,8 +243,8 @@ export async function generateFix(
     confidence: clampConfidence(parsedPayload.confidence),
   };
 
-  await persistFixResult(issue, result);
-  return result;
+  await persistFixResult(issue, fixResult);
+  return fixResult;
 }
 
 export { FixValidationError };

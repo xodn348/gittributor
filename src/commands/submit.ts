@@ -5,6 +5,7 @@ import { loadConfig } from "../lib/config.js";
 import { checkRateLimit, checkDuplicateContribution, checkRepoEligibility, recordSubmission } from "../lib/guardrails.js";
 import { saveContribution } from "../lib/history.js";
 import { checkContributingCompliance } from "../lib/contributing-checker.js";
+import { error as logError, warn } from "../lib/logger.js";
 import type { FixResult, PRSubmission, PipelineState, PipelineStatus, ContributionOpportunity, ContributionType } from "../types/index.js";
 
 const WORKSPACE_ROOT = ".gittributor/workspace";
@@ -150,12 +151,12 @@ const selectIssueId = (
   reviewState: ReviewStateData | null,
   fixPayload: PersistedFixPayload,
 ): number => {
-  const data = {
+  const submissionData = {
     review: reviewState ?? undefined,
   } satisfies SubmissionStateData;
 
-  if (typeof data.review?.issueId === "number") {
-    return data.review.issueId;
+  if (typeof submissionData.review?.issueId === "number") {
+    return submissionData.review.issueId;
   }
 
   const currentIssue = state.issues[0];
@@ -185,8 +186,8 @@ const selectIssueId = (
   return fixIssueIds.sort((left, right) => right - left)[0];
 };
 
-const ensureApprovedReview = (state: PipelineState, data: SubmissionStateData): void => {
-  const decision = data.review?.decision;
+const ensureApprovedReview = (state: PipelineState, submissionData: SubmissionStateData): void => {
+  const decision = submissionData.review?.decision;
   if (state.status !== "reviewed" || decision !== "approved") {
     throw new Error("Cannot submit: fix was not approved");
   }
@@ -417,10 +418,10 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
       const prTitle = `fix(#${issue.number}): ${shortDescription(issue.title)}`;
       const opportunity = findMatchingOpportunity(contributionOpportunities, repoFullName, primaryFilePath);
       const prBody = createPRBody(issue.number, fix, opportunity);
-      console.log("\n=== PR Preview (dry-run) ===");
-      console.log(`Title: ${prTitle}`);
-      console.log(`Body:\n${prBody}`);
-      console.log("=============================\n");
+      process.stdout.write("\n=== PR Preview (dry-run) ===\n");
+      process.stdout.write(`Title: ${prTitle}\n`);
+      process.stdout.write(`Body:\n${prBody}\n`);
+      process.stdout.write("=============================\n");
       return 0;
     }
 
@@ -440,7 +441,7 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
     }
 
     if (compliance.requiresIssueFirst && !options.skipIssueCheck) {
-      console.warn("Warning: Repository requires opening an issue before PR. Proceeding anyway...");
+      warn("Warning: Repository requires opening an issue before PR. Proceeding anyway...");
     }
 
     await runCommand(["git", "-C", workspacePath, "checkout", "-b", branchName]);
@@ -498,7 +499,7 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown submit failure";
 
-    console.error(message);
+    logError(message);
     await updateState(state, "submit_failed", {
       error: message,
     });

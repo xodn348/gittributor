@@ -18,8 +18,8 @@ export async function loadHistory(historyPath: string): Promise<ContributionHist
     return [];
   }
   const content = readFileSync(historyPath, "utf-8");
-  const data: HistoryFile = JSON.parse(content);
-  return data.contributions || [];
+  const historyFile: HistoryFile = JSON.parse(content);
+  return historyFile.contributions || [];
 }
 
 export async function saveContribution(
@@ -34,8 +34,8 @@ export async function saveContribution(
   let existing: ContributionHistory[] = [];
   if (existsSync(historyPath)) {
     const content = readFileSync(historyPath, "utf-8");
-    const data: HistoryFile = JSON.parse(content);
-    existing = data.contributions || [];
+    const historyFile: HistoryFile = JSON.parse(content);
+    existing = historyFile.contributions || [];
   }
 
   const now = Date.now();
@@ -65,8 +65,8 @@ export async function updateContributionStatus(
   }
 
   const content = readFileSync(historyPath, "utf-8");
-  const data: HistoryFile = JSON.parse(content);
-  const contributions = data.contributions || [];
+  const historyFile: HistoryFile = JSON.parse(content);
+  const contributions = historyFile.contributions || [];
 
   const index = contributions.findIndex((c) => c.id === id);
   if (index === -1) {

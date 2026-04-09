@@ -172,14 +172,14 @@ export const getStateData = <T>(key: string): T | null => {
   return cachedState.data[key] as T;
 };
 
-export const setStateData = async (key: string, data: unknown): Promise<void> => {
+export const setStateData = async (key: string, newValue: unknown): Promise<void> => {
   const currentState = getCachedState() ?? (await loadState());
 
   const nextState: PersistedPipelineState = {
     ...currentState,
     data: {
       ...currentState.data,
-      [key]: data,
+      [key]: newValue,
     },
   };
 

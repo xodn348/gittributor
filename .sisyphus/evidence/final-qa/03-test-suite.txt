@@ -1,0 +1,30 @@
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+No repositories found matching criteria.
+[36m[1m[INFO][0m No YAML repo list found, will use fallback
+[36m[1m[INFO][0m No YAML repo list found, falling back to GitHub search
+[36m[1m[INFO][0m Searching repositories with query: language:TypeScript+stars:>=5000+pushed:>=2026-01-09&sort=updated&order=desc
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+No repositories found matching criteria.
+[36m[1m[INFO][0m Loaded 1 curated repos from YAML
+[36m[1m[INFO][0m Filtered curated repos to 1 by language/minStars
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[32m[1mRepository                      Stars     Language        Open Issues     URL
+test/repo                       5000      TypeScript      5               https://github.com/test/repo[0m
+[36m[1m[INFO][0m Pipeline state saved (discovered).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (fixed).
+
+Users/jnnj92/gittributor/tests/config.test.ts:
+Unknown config field 'unknownField' in ~/.gittributorrc.json
+Unknown config field 'anotherUnknown' in ~/.gittributorrc.json
+
+ 357 pass
+ 3 skip
+ 0 fail
+ 852 expect() calls
+Ran 360 tests across 33 files. [6.40s]

@@ -172,3 +172,24 @@
 6. **`RunDependencies` interface must include ALL used functions**: Including `setStateData`, `loadState`, `saveState` from state.ts, not just the pipeline stage functions.
 
 7. **Test isolation with console output**: Multiple tests running together cause console.log interleaving. This makes debugging hard. Use pure DI to ensure mocks control all behavior.
+
+## 2026-04-09 F3 CLI QA
+- Real `discover` execution successfully exercised the YAML repo-loading path (`Loaded 30 curated repos from YAML`).
+- The CLI command surface is wired: main help shows `discover`, `analyze`, `fix`, `review`, `submit`, and `run`.
+- Empty invocation prints usage instead of crashing.
+- Local verification result: `357 pass`, `3 skip`, `0 fail`.
+
+- [F4 scope fidelity] Core V2 modules exist and `bun test` is green, but several task contracts drifted from the plan (especially T0/T1/T3/T5/T7/T9/T12).
+
+## 2026-04-09 F1 re-audit
+- For the manual-review guardrail, checking call sites matters more than the optional `autoApprove` parameter itself: `src/index.ts` now runs review then submit, and `src/commands/submit.ts:189-193` rejects non-approved state.
+- Generic-name grep needs a narrowed pass for actual declarations/parameters; broad text grep catches acceptable property names and stream event names.
+
+- 2026-04-09 F1 re-audit evidence: `bun test` still reports `357 pass / 0 fail`; plan compliance checks should treat state field names/API fields separately from local identifier bans, but actual locals/params like `result` and `item` still need renaming to satisfy the generic-name guardrail.
+
+- 2026-04-09 F1 final re-review: confirmed V2 keeps a guarded submit flow: manual review is enforced in `src/commands/submit.ts` via `ensureApprovedReview`, dry-run is supported in CLI/run/submit, and fix generation still routes through AI model calls in `src/lib/fix-generator.ts`.
+
+## 2026-04-09 13:52:18 — F1 final compliance re-review
+- Verified required guardrails exist: per-repo weekly cap and global weekly cap (`MAX_GLOBAL_WEEKLY = 10`) in `src/lib/guardrails.ts`.
+- Verified review gating is enforced before submit via `ensureApprovedReview` in `src/commands/submit.ts`.
+- Verified `--dry-run` support exists in orchestrator parsing and submit preview flow.

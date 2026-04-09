@@ -73,9 +73,9 @@ export class GitHubClient {
         String(opts.limit),
       ]);
 
-      const data = this.parseJSON<RepositorySearchResult[]>(stdout, "searchRepositories");
+      const searchResults = this.parseJSON<RepositorySearchResult[]>(stdout, "searchRepositories");
 
-      for (const repo of data) {
+      for (const repo of searchResults) {
         repositories.push({
           id: idCounter,
           name: repo.name,
@@ -141,8 +141,8 @@ export class GitHubClient {
         }
       }
 
-      const data = this.parseJSON<IssueSearchResult[]>(stdout, "searchIssues");
-      for (const issue of data) {
+      const searchResults = this.parseJSON<IssueSearchResult[]>(stdout, "searchIssues");
+      for (const issue of searchResults) {
         if (!uniqueIssues.has(issue.number)) {
           uniqueIssues.set(issue.number, issue);
         }
@@ -228,17 +228,17 @@ export class GitHubClient {
       "api",
       `repos/${repoFullName}/git/trees/HEAD?recursive=1`,
     ]);
-    const data = this.parseJSON<{ tree: { path: string; type: string }[] }>(payload, "getFileTree");
-    return data.tree
-      .filter((item) => item.type === "blob")
-      .map((item) => item.path);
+    const treePayload = this.parseJSON<{ tree: { path: string; type: string }[] }>(payload, "getFileTree");
+    return treePayload.tree
+      .filter((fileEntry) => fileEntry.type === "blob")
+      .map((fileEntry) => fileEntry.path);
   }
 
   private async getIssueReactions(repoFullName: string, issueNumber: number): Promise<number> {
     try {
       const payload = await this.runCommand(["gh", "api", `repos/${repoFullName}/issues/${issueNumber}`]);
-      const data = this.parseJSON<IssueDetailsResult>(payload, "getIssueReactions");
-      return data.reactions?.total_count ?? 0;
+      const issueDetails = this.parseJSON<IssueDetailsResult>(payload, "getIssueReactions");
+      return issueDetails.reactions?.total_count ?? 0;
     } catch (error) {
       debug(
         `Skipping reactions lookup for ${repoFullName}#${issueNumber}: ${error instanceof Error ? error.message : "unknown error"}`,
@@ -311,7 +311,7 @@ export class GitHubClient {
       `repos/${repoFullName}`,
     ]);
 
-    const data = this.parseJSON<{
+    const repoPayload = this.parseJSON<{
       full_name: string;
       disk_usage: number;
       stargazers_count: number;
@@ -322,11 +322,11 @@ export class GitHubClient {
     const hasOpenPR = await this.hasOpenUserPR(repoFullName);
 
     return {
-      fullName: data.full_name,
-      diskUsage: data.disk_usage,
-      stargazerCount: data.stargazers_count,
-      isArchived: data.archived,
-      updatedAt: data.updated_at,
+      fullName: repoPayload.full_name,
+      diskUsage: repoPayload.disk_usage,
+      stargazerCount: repoPayload.stargazers_count,
+      isArchived: repoPayload.archived,
+      updatedAt: repoPayload.updated_at,
       hasOpenUserPR: hasOpenPR,
     };
   }
@@ -339,8 +339,8 @@ export class GitHubClient {
         `repos/${repoFullName}/pulls?state=open&creator=@me`,
       ]);
 
-      const data = this.parseJSON<Array<{ id: number }>>(payload, "hasOpenUserPR");
-      return data.length > 0;
+      const openPRs = this.parseJSON<Array<{ id: number }>>(payload, "hasOpenUserPR");
+      return openPRs.length > 0;
     } catch {
       return false;
     }

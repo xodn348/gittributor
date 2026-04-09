@@ -21,7 +21,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 };
 
 const isStringArray = (value: unknown): value is string[] => {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+  return Array.isArray(value) && value.every((element) => typeof element === "string");
 };
 
 export const isCommandName = (value: unknown): value is CommandName => {

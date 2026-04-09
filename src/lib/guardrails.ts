@@ -11,10 +11,9 @@ const HOUR_IN_MS = 60 * 60 * 1000;
 const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_HOURLY = 3;
 const MAX_WEEKLY_PER_REPO = 2;
+const MAX_GLOBAL_WEEKLY = 10;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === "object" && value !== null;
-};
+
 
 const readJsonSafely = <T>(path: string, defaultValue: T): T => {
   try {
@@ -31,11 +30,15 @@ const readJsonSafely = <T>(path: string, defaultValue: T): T => {
 export async function checkRateLimit(
   repo: string,
   rateLimitsPath: string,
+  limits?: { maxHourly?: number; maxWeeklyPerRepo?: number },
 ): Promise<GuardrailCheck> {
   const state = readJsonSafely<RateLimitState>(rateLimitsPath, {
     hourly: [],
     weekly: {},
   });
+
+  const maxHourly = limits?.maxHourly ?? MAX_HOURLY;
+  const maxWeeklyPerRepo = limits?.maxWeeklyPerRepo ?? MAX_WEEKLY_PER_REPO;
 
   const now = Date.now();
   const hourlyWindow = state.hourly.filter((entry) => {
@@ -43,10 +46,10 @@ export async function checkRateLimit(
     return now - time < HOUR_IN_MS;
   });
 
-  if (hourlyWindow.length >= MAX_HOURLY) {
+  if (hourlyWindow.length >= maxHourly) {
     return {
       passed: false,
-      reason: `hourly limit exceeded: ${hourlyWindow.length}/${MAX_HOURLY} PRs in the last hour`,
+      reason: `hourly limit exceeded: ${hourlyWindow.length}/${maxHourly} PRs in the last hour`,
     };
   }
 
@@ -56,10 +59,26 @@ export async function checkRateLimit(
     return now - time < WEEK_IN_MS;
   });
 
-  if (weeklyWindow.length >= MAX_WEEKLY_PER_REPO) {
+  if (weeklyWindow.length >= maxWeeklyPerRepo) {
     return {
       passed: false,
-      reason: `weekly limit exceeded for ${repo}: ${weeklyWindow.length}/${MAX_WEEKLY_PER_REPO} PRs in the last week`,
+      reason: `weekly limit exceeded for ${repo}: ${weeklyWindow.length}/${maxWeeklyPerRepo} PRs in the last week`,
+    };
+  }
+
+  let globalWeeklyCount = 0;
+  for (const repoTimestamps of Object.values(state.weekly)) {
+    const recentTimestamps = repoTimestamps.filter((timestamp) => {
+      const time = new Date(timestamp).getTime();
+      return now - time < WEEK_IN_MS;
+    });
+    globalWeeklyCount += recentTimestamps.length;
+  }
+
+  if (globalWeeklyCount >= MAX_GLOBAL_WEEKLY) {
+    return {
+      passed: false,
+      reason: `global weekly cap exceeded: ${globalWeeklyCount}/${MAX_GLOBAL_WEEKLY} PRs across all repos this week`,
     };
   }
 
@@ -113,7 +132,9 @@ export async function checkDuplicateContribution(
 export function checkRepoEligibility(
   isArchived: boolean,
   stars: number,
+  minStars?: number,
 ): GuardrailCheck {
+  const threshold = minStars ?? 1000;
   if (isArchived) {
     return {
       passed: false,
@@ -121,10 +142,10 @@ export function checkRepoEligibility(
     };
   }
 
-  if (stars < 1000) {
+  if (stars < threshold) {
     return {
       passed: false,
-      reason: `Repository has insufficient stars (${stars} < 1000)`,
+      reason: `Repository has insufficient stars (${stars} < ${threshold})`,
     };
   }
 

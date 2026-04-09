@@ -152,7 +152,9 @@ export async function detectTyposInRepo(repoPath: string): Promise<TypoResult[]>
             const content = readFileSync(fullPath, "utf8");
             const fileResults = scanFileForTypos(fullPath, content);
             results.push(...fileResults);
-          } catch {}
+          } catch {
+            // intentionally ignored
+          }
         }
       }
     }
@@ -221,7 +223,9 @@ export async function detectDeps(repoPath: string): Promise<DepResult[]> {
           });
         }
       }
-    } catch {}
+    } catch {
+      // intentionally ignored
+    }
   }
 
   const requirementsPath = `${repoPath}/requirements.txt`;
@@ -244,7 +248,9 @@ export async function detectDeps(repoPath: string): Promise<DepResult[]> {
           }
         }
       }
-    } catch {}
+    } catch {
+      // intentionally ignored
+    }
   }
 
   return results;
@@ -387,7 +393,9 @@ export async function detectCodeIssues(repoFullName: string, labels?: string[]):
         });
       }
     }
-  } catch {}
+  } catch {
+    // intentionally ignored
+  }
 
   return results;
 }

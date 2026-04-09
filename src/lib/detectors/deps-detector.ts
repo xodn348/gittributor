@@ -51,8 +51,8 @@ async function fetchNpmRegistry(packageName: string): Promise<string> {
       return "";
     }
     
-    const data = await response.json() as { "dist-tags"?: { latest: string } };
-    return data["dist-tags"]?.latest ?? "";
+    const npmResponse = await response.json() as { "dist-tags"?: { latest: string } };
+    return npmResponse["dist-tags"]?.latest ?? "";
   } catch {
     return "";
   }

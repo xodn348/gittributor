@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { getHistoryStats } from "../lib/history.js";
 import { setStateData, saveState, loadState } from "../lib/state.js";
+import { error as logError } from "../lib/logger.js";
 import type { ContributionOpportunity, ContributionType, TrendingRepo } from "../types/index.js";
 
 const VALID_TYPES: readonly ContributionType[] = ["typo", "docs", "deps", "test", "code"];
@@ -60,18 +61,18 @@ export async function showHistoryStats(
 }
 
 const printStage = (emoji: string, message: string): void => {
-  console.log(emoji + " " + message);
+  process.stdout.write(emoji + " " + message + "\n");
 };
 
 const printSummary = (opportunities: ContributionOpportunity[]): void => {
-  console.log("\n=== Pipeline Summary ===");
-  console.log("Total opportunities: " + opportunities.length);
+  process.stdout.write("\n=== Pipeline Summary ===\n");
+  process.stdout.write("Total opportunities: " + opportunities.length + "\n");
   const byType: Record<string, number> = {};
   for (const opp of opportunities) {
     byType[opp.type] = (byType[opp.type] ?? 0) + 1;
   }
   for (const [type, count] of Object.entries(byType)) {
-    console.log("  " + type + ": " + count);
+    process.stdout.write("  " + type + ": " + count + "\n");
   }
 };
 
@@ -147,7 +148,7 @@ export async function runOrchestrator(
   printStage("🔍", "Discovering repos...");
   const repos = await discover({});
   if (repos.length === 0) {
-    console.log("No repositories found.");
+    process.stdout.write("No repositories found.\n");
     printStage("✅", "Pipeline complete.");
     return 0;
   }
@@ -157,10 +158,10 @@ export async function runOrchestrator(
   let filtered = opportunities;
   if (options.type) {
     filtered = filterByType(opportunities, options.type);
-    console.log("Filtered to " + filtered.length + " " + options.type + " opportunities.");
+    process.stdout.write("Filtered to " + filtered.length + " " + options.type + " opportunities.\n");
   }
   if (filtered.length === 0) {
-    console.log("No contribution opportunities found.");
+    process.stdout.write("No contribution opportunities found.\n");
     printStage("✅", "Pipeline complete.");
     return 0;
   }
@@ -173,7 +174,7 @@ export async function runOrchestrator(
 
   printStage("🔧", "Fixing contributions...");
   for (const opp of filtered) {
-    console.log("  " + opp.repo.fullName + ": " + opp.description);
+    process.stdout.write("  " + opp.repo.fullName + ": " + opp.description + "\n");
     await setStateData("currentOpportunity", opp);
     await route(opp);
   }
@@ -190,7 +191,7 @@ export async function runOrchestrator(
   if (submitResult === 0) {
     printStage("✅", "Pipeline complete.");
   } else {
-    console.error("Pipeline failed during submit.");
+    logError("Pipeline failed during submit.");
   }
 
   return submitResult;

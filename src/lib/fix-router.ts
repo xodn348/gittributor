@@ -1,4 +1,4 @@
-import type { ContributionOpportunity, ContributionType } from "../types/index";
+import type { ContributionOpportunity } from "../types/index";
 import { callModel } from "./ai.js";
 import { createTypoFix } from "./detectors/typo-detector.js";
 import { generateDocsSection } from "./detectors/docs-detector.js";
@@ -29,14 +29,14 @@ async function routeDeps(opportunity: ContributionOpportunity): Promise<FixResul
 async function routeTest(opportunity: ContributionOpportunity): Promise<FixResultRouter> {
   const prompt = "Generate a test skeleton for: " + opportunity.description + "\nFile: " + opportunity.filePath;
   
-  const result = await callModel({
+  const modelResponse = await callModel({
     system: TEST_SYSTEM_PROMPT,
     prompt: prompt,
     maxTokens: 1024,
   });
 
   try {
-    const parsed = JSON.parse(result);
+    const parsed = JSON.parse(modelResponse);
     return {
       patch: parsed.patch ?? "",
       description: parsed.description ?? "Generated test",
@@ -54,14 +54,14 @@ async function routeTest(opportunity: ContributionOpportunity): Promise<FixResul
 async function routeCode(opportunity: ContributionOpportunity): Promise<FixResultRouter> {
   const prompt = "Generate a fix for: " + opportunity.description + "\nFile: " + opportunity.filePath;
   
-  const result = await callModel({
+  const modelResponse = await callModel({
     system: ROUTING_SYSTEM_PROMPT,
     prompt: prompt,
     maxTokens: 1024,
   });
 
   try {
-    const parsed = JSON.parse(result);
+    const parsed = JSON.parse(modelResponse);
     return {
       patch: parsed.patch ?? "",
       description: parsed.description ?? "Generated fix",

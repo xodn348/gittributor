@@ -128,7 +128,7 @@ const readConfigFile = async (
   }
 
   if (parsed.targetLanguages !== undefined) {
-    if (!Array.isArray(parsed.targetLanguages) || !parsed.targetLanguages.every((item) => typeof item === "string")) {
+    if (!Array.isArray(parsed.targetLanguages) || !parsed.targetLanguages.every((langEntry) => typeof langEntry === "string")) {
       throw new ConfigError(`targetLanguages in ${configSource} must be a string array`);
     }
     overrides.targetLanguages = parsed.targetLanguages;
@@ -166,7 +166,7 @@ const readConfigFile = async (
     if (!Array.isArray(parsed.contributionTypes)) {
       throw new ConfigError(`contributionTypes in ${configSource} must be an array`);
     }
-    if (!parsed.contributionTypes.every((item) => isContributionType(item))) {
+    if (!parsed.contributionTypes.every((langEntry) => isContributionType(langEntry))) {
       throw new ConfigError(
         `contributionTypes in ${configSource} must contain only: docs, typo, deps, test, code`,
       );

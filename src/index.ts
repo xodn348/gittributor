@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { discoverIssues, printIssueProposalTable } from "./commands/analyze";
+import { discoverIssues, printIssueProposalTable } from "./commands/analyze.js";
 import { CLIArgumentError, parseArgs } from "./commands/cli";
 import { discoverRepos } from "./commands/discover";
 import { reviewFix } from "./commands/review";
@@ -9,7 +9,7 @@ import { analyzeCodebase, sanitizeAnalysisForPersistence } from "./lib/analyzer"
 import { ConfigError, loadConfig } from "./lib/config";
 import { generateFix } from "./lib/fix-generator";
 import { error as logError } from "./lib/logger";
-import { loadState, saveState } from "./lib/state";
+import { loadState, saveState } from "./lib/state.js";
 import type { AnalysisResult, Config, FixResult, Issue, Repository } from "./types";
 
 const USAGE_TEXT = [
@@ -141,7 +141,7 @@ const validateCommandShape = (commandArgs: string[]): void => {
     fix: [],
     review: [],
     submit: [],
-    run: [],
+    run: ["--dry-run", "--stats", "--type", "--type="],
     discover: ["--min-stars=", "--language=", "--max-results="],
   };
 
@@ -577,7 +577,7 @@ export const runPipelineCommand = async (
       throw pipelineError;
     }
 
-    const reviewResult = await dependencies.reviewFix({}, { autoApprove: true });
+    const reviewResult = await dependencies.reviewFix({}, {});
     if (reviewResult !== 0) {
       return reviewResult;
     }
@@ -631,7 +631,18 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
     case "discover":
       return runDiscoverCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs);
     case "analyze":
-      return runAnalyzeCommand(output);
+      {
+        const repos = await discoverRepos({});
+        const { analyzeRepositories } = await import("./commands/analyze.js");
+        const { setStateData } = await import("./lib/state.js");
+        const opportunities = await analyzeRepositories(repos);
+        await setStateData("contributionOpportunities", opportunities);
+        if (opportunities.length === 0) {
+          writeErrorLine(output, "No contribution opportunities found.");
+          return 1;
+        }
+        return 0;
+      }
     case "fix":
       await (runtimeConfig ?? resolveRuntimeConfig(globalFlags));
       return runFixCommand();
@@ -640,7 +651,11 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
     case "submit":
       return submitApprovedFix();
     case "run":
-      return runPipelineCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs, output);
+      {
+        const { parseRunFlags, runOrchestrator } = await import("./commands/run.js");
+        const flags = parseRunFlags(commandArgs);
+        return runOrchestrator(flags);
+      }
   }
 };
 

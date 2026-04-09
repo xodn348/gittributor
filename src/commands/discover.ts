@@ -176,7 +176,7 @@ const filterAndEnrichRepos = async (
       mergeProbability: calculateMergeProbability(repo),
     }))
     .sort((a, b) => b.mergeProbability.score - a.mergeProbability.score)
-    .map((item) => item.repo)
+    .map((sortedRepo) => sortedRepo.repo)
     .slice(0, options.limit);
 };
 

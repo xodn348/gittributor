@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "os";
 import { GitHubClient } from "../lib/github.js";
 import { debug, info } from "../lib/logger.js";
-import { loadState, setStateData } from "../lib/state.js";
+import { setStateData } from "../lib/state.js";
 import { checkRepoEligibility } from "../lib/guardrails.js";
 import {
   detectTypos,
@@ -255,7 +255,7 @@ export async function analyzeSingleRepo(repo: TrendingRepo): Promise<Contributio
     const readmeContent = existsSync(readmePath) ? readFileSync(readmePath, "utf8") : "";
 
     const filePaths = existsSync(tempPath) ? 
-      [...readdirSync(tempPath).map(f => join(tempPath, f))] : [];
+      [...readdirSync(tempPath).map((f: string) => join(tempPath, f))] : [];
 
     const typoResults = detectTypos(readmeContent);
     for (const typo of typoResults) {
@@ -358,7 +358,9 @@ export async function analyzeSingleRepo(repo: TrendingRepo): Promise<Contributio
   } finally {
     try {
       rmSync(tempPath, { recursive: true, force: true });
-    } catch {}
+    } catch {
+      // intentionally ignored
+    }
   }
 
   return sortOpportunities(opportunities);

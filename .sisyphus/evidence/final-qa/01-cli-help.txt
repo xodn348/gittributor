@@ -1,0 +1,19 @@
+Usage: gittributor [global options] <command> [options]
+
+Commands:
+  discover    Find repositories with approachable issues
+  analyze     Discover issues for the current repository selection
+  fix         Analyze the top issue and generate a fix payload
+  review      Review the generated fix payload
+  submit      Submit the approved fix as a pull request
+  run         Run the full pipeline: discover → analyze → fix → review → submit
+  run         Run the full pipeline: discover → analyze → fix → review → submit
+
+Global options:
+  --help           Show this usage information
+  --version        Print the CLI version
+  --verbose        Enable verbose logging
+  --config <path>  Load configuration overrides from a JSON file
+
+Command options:
+  discover --min-stars=<number> --language=<name> --max-results=<number>
