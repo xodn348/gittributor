@@ -93,3 +93,25 @@
 - deps-detector.ts: parsePackageJson(), checkOutdatedDeps() with npm registry fetch, generateVersionBump()
 - ESM imports: use .js extension in all TypeScript imports
 - Tests: all 39 tests pass across fix-router.test.ts, typo-detector.test.ts, docs-detector.test.ts, deps-detector.test.ts
+
+## [2026-04-09] Task: T7 - CONTRIBUTING.md Compliance Checker
+- src/lib/contributing-checker.ts: checkContributingCompliance(repoPath) → ComplianceResult
+- Detects CLA: regex match on /(?:contributor\s+license\s+agreement|CLA)/i
+- Detects issue-first: regex match on /(?:please\s+open\s+an\s+issue|file\s+an\s+issue|issue\s+first)/i
+- Finds PR template at .github/PULL_REQUEST_TEMPLATE.md
+- Returns permissive defaults when CONTRIBUTING.md missing (no throw)
+- Added ComplianceResult interface to src/types/index.ts
+- TDD: wrote 9 tests first, all pass
+
+## [2026-04-09] Task: T8 - Review Command for Multi-Type Contributions
+- review.ts: added reviewContributions() function for viewing contribution opportunities
+- Features implemented:
+  - Group by type: Typo (2), Docs (1), etc.
+  - Color coding: green (>0.7), yellow (0.4-0.7), red (<0.4) using ANSI escape codes
+  - --type filter: reviewContributions({ typeFilter: "typo" })
+  - Compliance warnings: CLA and issue-first warnings with yellow color
+  - Summary stats: count per type, average merge probability, top recommendation
+  - Empty state handling: "No contributions found" message
+- Read-only: reviewContributions does NOT modify state (getStateData only)
+- Uses ANSI_RESET, ANSI_GREEN, ANSI_YELLOW, ANSI_RED escape codes
+- TypeScript: getStateData<T>(key) returns typed data from pipeline state
