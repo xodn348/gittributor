@@ -186,3 +186,9 @@ export const setStateData = async (key: string, newValue: unknown): Promise<void
   await saveState(nextState);
   debug(`Persisted state data for key '${key}'.`);
 };
+
+export const resetState = async (): Promise<void> => {
+  stateCache = null;
+  cachedWorkspacePath = null;
+  await saveState(createDefaultState());
+};

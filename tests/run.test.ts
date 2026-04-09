@@ -2,8 +2,25 @@ import { afterEach, beforeEach, describe, it, expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "os";
 import { join } from "node:path";
-import type { ContributionOpportunity, TrendingRepo } from "../src/types/index.js";
+import type { ContributionOpportunity, TrendingRepo, Config } from "../src/types/index.js";
 import type { RunDependencies } from "../src/commands/run.js";
+
+const mockConfig = (overrides: Partial<Config> = {}): Config => ({
+  aiProvider: "anthropic",
+  openaiModel: "gpt-5-mini",
+  minStars: 50,
+  maxPRsPerDay: 5,
+  maxPRsPerRepo: 1,
+  targetLanguages: ["typescript"],
+  verbose: false,
+  repoListPath: "repos.yaml",
+  maxPRsPerWeekPerRepo: 2,
+  maxPRsPerHour: 3,
+  contributionTypes: ["docs", "typo", "deps", "test", "code"],
+  historyPath: ".gittributor/history.json",
+  dryRun: false,
+  ...overrides,
+});
 import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
 const mockOpportunity = (overrides: Partial<ContributionOpportunity> = {}): ContributionOpportunity => ({
@@ -48,6 +65,7 @@ const mockTrendingRepo = (overrides: Partial<TrendingRepo> = {}): TrendingRepo =
 });
 
 const makeDeps = (overrides: Partial<RunDependencies> = {}): RunDependencies => ({
+  loadConfig: async () => mockConfig(),
   discoverRepos: async () => [],
   analyzeRepositories: async () => [],
   routeContribution: async () => ({ patch: "", description: "", confidence: 0 }),

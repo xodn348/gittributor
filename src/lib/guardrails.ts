@@ -7,11 +7,13 @@ export interface RateLimitState {
   weekly: Record<string, string[]>;
 }
 
-const HOUR_IN_MS = 60 * 60 * 1000;
-const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
+export const HOUR_IN_MS = 60 * 60 * 1000;
+export const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_HOURLY = 3;
 const MAX_WEEKLY_PER_REPO = 2;
-const MAX_GLOBAL_WEEKLY = 10;
+export const MAX_GLOBAL_WEEKLY = 10;
+
+export { readJsonSafely };
 
 
 
@@ -83,6 +85,23 @@ export async function checkRateLimit(
   }
 
   return { passed: true, reason: "" };
+}
+
+export async function getGlobalWeeklyCount(rateLimitsPath: string): Promise<number> {
+  const state = readJsonSafely<RateLimitState>(rateLimitsPath, {
+    hourly: [],
+    weekly: {},
+  });
+  const now = Date.now();
+  let count = 0;
+  for (const repoTimestamps of Object.values(state.weekly)) {
+    const recent = repoTimestamps.filter((ts) => {
+      const time = new Date(ts).getTime();
+      return now - time < WEEK_IN_MS;
+    });
+    count += recent.length;
+  }
+  return count;
 }
 
 interface ContributionHistory {

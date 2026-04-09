@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
 import { getHistoryStats } from "../lib/history.js";
-import { setStateData, saveState, loadState } from "../lib/state.js";
+import { setStateData, saveState, loadState, resetState } from "../lib/state.js";
 import { error as logError } from "../lib/logger.js";
-import type { ContributionOpportunity, ContributionType, TrendingRepo } from "../types/index.js";
+import { loadConfig, getTargetLanguages } from "../lib/config.js";
+import { getGlobalWeeklyCount, MAX_GLOBAL_WEEKLY } from "../lib/guardrails.js";
+import type { Config, ContributionOpportunity, ContributionType, TrendingRepo } from "../types/index.js";
 
 const VALID_TYPES: readonly ContributionType[] = ["typo", "docs", "deps", "test", "code"];
 
@@ -10,9 +12,11 @@ export interface RunOptions {
   dryRun?: boolean;
   stats?: boolean;
   type?: ContributionType | null;
+  language?: string;
 }
 
 export interface RunDependencies {
+  loadConfig?: () => Promise<Config>;
   discoverRepos: (options: Record<string, unknown>) => Promise<TrendingRepo[]>;
   analyzeRepositories: (repos: TrendingRepo[]) => Promise<ContributionOpportunity[]>;
   routeContribution: (opp: ContributionOpportunity) => Promise<{ patch: string; description: string; confidence: number }>;
@@ -113,6 +117,23 @@ export function parseRunFlags(args: string[]): RunOptions {
       }
     }
   }
+  const languageIndex = args.indexOf("--language");
+  if (languageIndex !== -1 && languageIndex + 1 < args.length) {
+    const value = args[languageIndex + 1];
+    if (value && value.trim() !== "") {
+      options.language = value;
+    }
+  } else {
+    for (const arg of args) {
+      if (arg.startsWith("--language=")) {
+        const value = arg.slice("--language=".length);
+        if (value && value.trim() !== "") {
+          options.language = value;
+        }
+        break;
+      }
+    }
+  }
   return options;
 }
 
@@ -124,6 +145,9 @@ export async function runOrchestrator(
     const showStats = deps.showHistoryStats ?? showHistoryStats;
     await showStats(".gittributor/history.json");
   }
+  const config = await (deps.loadConfig ?? loadConfig)();
+  const languages = getTargetLanguages(config, options.language);
+
   const discover = deps.discoverRepos ?? (async (opts: Record<string, unknown>) => {
     const { discoverRepos: fn } = await import("./discover.js");
     return fn(opts as Parameters<typeof fn>[0]);
@@ -145,54 +169,77 @@ export async function runOrchestrator(
     return fn(opts as Parameters<typeof fn>[0]);
   });
 
-  printStage("🔍", "Discovering repos...");
-  const repos = await discover({});
-  if (repos.length === 0) {
-    process.stdout.write("No repositories found.\n");
-    printStage("✅", "Pipeline complete.");
-    return 0;
+  let lastSubmitResult = 0;
+
+  for (let i = 0; i < languages.length; i++) {
+    const language = languages[i];
+
+    const globalWeeklyCount = await getGlobalWeeklyCount(".gittributor/rate-limits.json");
+    if (globalWeeklyCount >= MAX_GLOBAL_WEEKLY) {
+      process.stdout.write(`⚠️  Global weekly cap reached (${globalWeeklyCount}/${MAX_GLOBAL_WEEKLY}). Stopping.\n`);
+      break;
+    }
+
+    process.stdout.write(`[language ${i + 1}/${languages.length}] Processing: ${language}\n`);
+
+    await resetState();
+
+    try {
+      printStage("🔍", "Discovering repos...");
+      const repos = await discover({ language });
+      if (repos.length === 0) {
+        process.stdout.write("No repositories found.\n");
+        printStage("✅", `Pipeline complete for ${language}.`);
+        continue;
+      }
+
+      printStage("📊", "Analyzing contributions...");
+      const opportunities = await analyze(repos);
+      let filtered = opportunities;
+      if (options.type) {
+        filtered = filterByType(opportunities, options.type);
+        process.stdout.write("Filtered to " + filtered.length + " " + options.type + " opportunities.\n");
+      }
+      if (filtered.length === 0) {
+        process.stdout.write("No contribution opportunities found.\n");
+        printStage("✅", `Pipeline complete for ${language}.`);
+        continue;
+      }
+
+      if (options.dryRun) {
+        printSummary(filtered);
+        printStage("✅", `Pipeline complete for ${language}.`);
+        continue;
+      }
+
+      printStage("🔧", "Fixing contributions...");
+      for (const opp of filtered) {
+        process.stdout.write("  " + opp.repo.fullName + ": " + opp.description + "\n");
+        await setStateData("currentOpportunity", opp);
+        await route(opp);
+      }
+
+      const currentState = await loadState();
+      await saveState({ ...currentState, status: "fixed" });
+
+      printStage("👀", "Reviewing contributions...");
+      await review({ typeFilter: options.type ?? undefined });
+
+      printStage("📤", "Submitting contribution...");
+      const submitResult = await submit();
+      lastSubmitResult = submitResult;
+
+      if (submitResult === 0) {
+        printStage("✅", `Pipeline complete for ${language}.`);
+      } else {
+        logError("Pipeline failed during submit.");
+      }
+    } catch (err) {
+      logError(`Error processing language "${language}": ${err instanceof Error ? err.message : String(err)}`);
+      lastSubmitResult = 1;
+    }
   }
 
-  printStage("📊", "Analyzing contributions...");
-  const opportunities = await analyze(repos);
-  let filtered = opportunities;
-  if (options.type) {
-    filtered = filterByType(opportunities, options.type);
-    process.stdout.write("Filtered to " + filtered.length + " " + options.type + " opportunities.\n");
-  }
-  if (filtered.length === 0) {
-    process.stdout.write("No contribution opportunities found.\n");
-    printStage("✅", "Pipeline complete.");
-    return 0;
-  }
-
-  if (options.dryRun) {
-    printSummary(filtered);
-    printStage("✅", "Pipeline complete.");
-    return 0;
-  }
-
-  printStage("🔧", "Fixing contributions...");
-  for (const opp of filtered) {
-    process.stdout.write("  " + opp.repo.fullName + ": " + opp.description + "\n");
-    await setStateData("currentOpportunity", opp);
-    await route(opp);
-  }
-
-  const currentState = await loadState();
-  await saveState({ ...currentState, status: "fixed" });
-
-  printStage("👀", "Reviewing contributions...");
-  await review({ typeFilter: options.type ?? undefined });
-
-  printStage("📤", "Submitting contribution...");
-  const submitResult = await submit();
-
-  if (submitResult === 0) {
-    printStage("✅", "Pipeline complete.");
-  } else {
-    logError("Pipeline failed during submit.");
-  }
-
-  return submitResult;
+  process.stdout.write(`=== Run complete: processed ${languages.length} language(s) ===\n`);
+  return lastSubmitResult;
 }

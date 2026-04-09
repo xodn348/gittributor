@@ -242,3 +242,10 @@ export const loadConfig = async (): Promise<Config> => {
 
   return config;
 };
+
+export function getTargetLanguages(config: Config, overrideLanguage?: string): string[] {
+  if (overrideLanguage && overrideLanguage.trim().length > 0) {
+    return [overrideLanguage.trim()];
+  }
+  return [...config.targetLanguages];
+}
