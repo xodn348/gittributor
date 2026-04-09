@@ -543,3 +543,36 @@ describe("reviewContributions", () => {
     });
   });
 });
+
+describe("parseTypeFilter", () => {
+  it("parses --type flag value", async () => {
+    const { parseTypeFilter } = await loadReviewModule();
+    
+    expect(parseTypeFilter(["--type", "typo"])).toBe("typo");
+    expect(parseTypeFilter(["--type", "docs"])).toBe("docs");
+    expect(parseTypeFilter(["--type", "deps"])).toBe("deps");
+    expect(parseTypeFilter(["--type", "test"])).toBe("test");
+    expect(parseTypeFilter(["--type", "code"])).toBe("code");
+  });
+
+  it("returns null when --type flag is not present", async () => {
+    const { parseTypeFilter } = await loadReviewModule();
+    
+    expect(parseTypeFilter([])).toBeNull();
+    expect(parseTypeFilter(["--verbose"])).toBeNull();
+  });
+
+  it("returns null for invalid type values", async () => {
+    const { parseTypeFilter } = await loadReviewModule();
+    
+    expect(parseTypeFilter(["--type", "invalid"])).toBeNull();
+    expect(parseTypeFilter(["--type", "TYP"])).toBeNull();
+  });
+
+  it("handles --type=value format", async () => {
+    const { parseTypeFilter } = await loadReviewModule();
+    
+    expect(parseTypeFilter(["--type=typo"])).toBe("typo");
+    expect(parseTypeFilter(["--type=docs"])).toBe("docs");
+  });
+});

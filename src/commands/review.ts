@@ -339,3 +339,27 @@ export async function reviewContributions(
 
   return 0;
 }
+
+const VALID_TYPES: readonly ContributionType[] = ["typo", "docs", "deps", "test", "code"];
+
+export function parseTypeFilter(args: string[]): ContributionType | null {
+  const typeIndex = args.indexOf("--type");
+  if (typeIndex !== -1 && typeIndex + 1 < args.length) {
+    const value = args[typeIndex + 1];
+    if (VALID_TYPES.includes(value as ContributionType)) {
+      return value as ContributionType;
+    }
+    return null;
+  }
+
+  for (const arg of args) {
+    if (arg.startsWith("--type=")) {
+      const value = arg.slice("--type=".length);
+      if (VALID_TYPES.includes(value as ContributionType)) {
+        return value as ContributionType;
+      }
+    }
+  }
+
+  return null;
+}
