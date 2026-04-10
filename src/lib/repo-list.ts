@@ -67,7 +67,7 @@ export function filterRepoList(
   }
 
   if (options.languages && options.languages.length > 0) {
-    filtered = filtered.filter((r) => r.language && options.languages!.includes(r.language));
+    filtered = filtered.filter((r) => r.language && options.languages!.map(l => l.toLowerCase()).includes(r.language.toLowerCase()));
   }
 
   if (options.excludeRepos && options.excludeRepos.length > 0) {

@@ -163,5 +163,45 @@ describe("repo-list", () => {
       expect(filtered.every((r) => r.stars >= 100000)).toBe(true);
       expect(filtered.every((r) => r.language === "JavaScript" || r.language === "TypeScript")).toBe(true);
     });
+
+    it("filters by lowercase config matching Title Case YAML - typescript matches TypeScript", () => {
+      const filtered = filterRepoList(testRepos, { languages: ["typescript"] });
+
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].name).toBe("vscode");
+      expect(filtered[0].language).toBe("TypeScript");
+    });
+
+    it("filters by lowercase config matching Title Case YAML - javascript matches JavaScript", () => {
+      const filtered = filterRepoList(testRepos, { languages: ["javascript"] });
+
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].name).toBe("react");
+      expect(filtered[0].language).toBe("JavaScript");
+    });
+
+    it("filters case-insensitively with ALLCAPS config - JAVASCRIPT matches JavaScript", () => {
+      const filtered = filterRepoList(testRepos, { languages: ["JAVASCRIPT"] });
+
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].name).toBe("react");
+      expect(filtered[0].language).toBe("JavaScript");
+    });
+
+    it("does not match repos of a different language", () => {
+      const filtered = filterRepoList(testRepos, { languages: ["rust"] });
+
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].name).toBe("rust");
+      expect(filtered[0].language).toBe("Rust");
+    });
+
+    it("exact match still works when cases already match", () => {
+      const filtered = filterRepoList(testRepos, { languages: ["TypeScript"] });
+
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].name).toBe("vscode");
+      expect(filtered[0].language).toBe("TypeScript");
+    });
   });
 });
