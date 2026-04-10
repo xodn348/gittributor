@@ -188,7 +188,7 @@ describe("repo-list", () => {
       expect(filtered[0].language).toBe("JavaScript");
     });
 
-    it("does not match repos of a different language", () => {
+    it("filters case-insensitively - lowercase 'rust' matches Title Case 'Rust'", () => {
       const filtered = filterRepoList(testRepos, { languages: ["rust"] });
 
       expect(filtered).toHaveLength(1);
