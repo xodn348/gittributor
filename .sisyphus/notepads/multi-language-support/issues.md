@@ -43,3 +43,25 @@
 - guardrail check reads .gittributor/rate-limits.json manually (no exported function) — inlined MAX_GLOBAL_WEEKLY=10, WEEK_IN_MS inline
 - MAX_GLOBAL_WEEKLY is not exported from guardrails.ts, had to inline constant
 - lastSubmitResult tracks final exit code across all languages
+
+## 2026-04-09 Task 4
+
+### Issue: Test file had pre-existing LSP errors
+- run.test.ts had errors about `setStateData` not being in RunDependencies
+- Tests also failed because they expected single-language behavior but multi-language loop ran 3 times
+- Solution: Added `loadConfig` mock to `makeDeps` in run.test.ts with single-language config
+
+### Issue: Stale .js files interfering with tests
+- There was a stale `tests/run.test.js` file that wasn't tracked by git
+- This caused test failures when running all tests (tests passed individually)
+- Solution: Removed the stale .js file
+
+### Key Implementation Details
+- `resetState()` clears stateCache and cachedWorkspacePath, writes default state
+- `getTargetLanguages(config, overrideLanguage?)` returns single language if override provided, otherwise all from config
+- `getGlobalWeeklyCount()` exported from guardrails.ts for guardrail check
+- Multi-language loop: guardrail check → resetState() → discover({ language }) → pipeline → try/catch
+
+### Verification
+- bun test: 357 pass, 3 skip, 0 fail
+- Commit: 1f4b51f

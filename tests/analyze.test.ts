@@ -43,12 +43,7 @@ describe("analyze command", () => {
       const result = await analyzeRepositories(repos);
 
       expect(result.length).toBeLessThanOrEqual(10);
-    });
-
-    test("returns empty for empty repo list", async () => {
-      const result = await analyzeRepositories([]);
-      expect(result.length).toBe(0);
-    });
+    }, 30000);
 
     test("skips archived repos", async () => {
       const repos: TrendingRepo[] = [

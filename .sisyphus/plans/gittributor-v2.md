@@ -320,7 +320,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `repos.yaml`, `src/lib/repo-list.ts`, `tests/repo-list.test.ts`
   - Pre-commit: `bun test tests/repo-list.test.ts`
 
-- [ ] 2. **Rewrite Discover Command for Trending Repos**
+- [x] 2. **Rewrite Discover Command for Trending Repos**
 
   **What to do**:
   - Rewrite `src/commands/discover.ts` to:
@@ -459,7 +459,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/lib/guardrails.ts`, `tests/guardrails.test.ts`
   - Pre-commit: `bun test tests/guardrails.test.ts`
 
-- [ ] 4. **Rewrite Analyze Command — Multi-Type Contribution Scoring**
+- [x] 4. **Rewrite Analyze Command — Multi-Type Contribution Scoring**
 
   **What to do**:
   - Rewrite `src/commands/analyze.ts` to:
@@ -596,7 +596,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/lib/history.ts`, `tests/history.test.ts`
   - Pre-commit: `bun test tests/history.test.ts`
 
-- [ ] 6. **Fix Router + AI-Free Detectors**
+- [x] 6. **Fix Router + AI-Free Detectors**
 
   **What to do**:
   - Create `src/lib/fix-router.ts` with:
@@ -672,7 +672,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/lib/fix-router.ts`, `src/lib/detectors/typo-detector.ts`, `src/lib/detectors/docs-detector.ts`, `src/lib/detectors/deps-detector.ts`, `tests/fix-router.test.ts`, `tests/detectors/*.test.ts`
   - Pre-commit: `bun test tests/fix-router.test.ts`
 
-- [ ] 7. **CONTRIBUTING.md Compliance Checker**
+- [x] 7. **CONTRIBUTING.md Compliance Checker**
 
   **What to do**:
   - Create `src/lib/contributing-checker.ts` with:
@@ -739,7 +739,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/lib/contributing-checker.ts`, `tests/contributing-checker.test.ts`
   - Pre-commit: `bun test tests/contributing-checker.test.ts`
 
-- [ ] 8. **Update Review Command for Multi-Type Contributions**
+- [x] 8. **Update Review Command for Multi-Type Contributions**
 
   **What to do**:
   - Update `src/commands/review.ts` to:
@@ -804,7 +804,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/commands/review.ts`, `tests/review.test.ts`
   - Pre-commit: `bun test tests/review.test.ts`
 
-- [ ] 9. **Update Submit Command with Guardrail Checks**
+- [x] 9. **Update Submit Command with Guardrail Checks**
 
   **What to do**:
   - Update `src/commands/submit.ts` to:
@@ -877,7 +877,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `src/commands/submit.ts`, `tests/submit.test.ts`
   - Pre-commit: `bun test tests/submit.test.ts`
 
-- [ ] 10. **Update Run Orchestrator for V2 Pipeline**
+- [x] 10. **Update Run Orchestrator for V2 Pipeline**
 
   **What to do**:
   - Update `src/commands/run.ts` to:
@@ -1010,7 +1010,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `tests/`, affected source files
   - Pre-commit: `bun test`
 
-- [ ] 12. **V2 Config Schema**
+- [x] 12. **V2 Config Schema**
 
   **What to do**:
   - Update `src/lib/config.ts` to:
@@ -1087,19 +1087,19 @@ Max Concurrent: 5 (Wave 1)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `bun test`. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names (data/result/item/temp).
   Output: `Build [PASS/FAIL] | Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real CLI QA** — `unspecified-high`
+- [x] F3. **Real CLI QA** — `unspecified-high`
   Start from clean state. Run `bun run src/index.ts discover` — verify trending repos returned. Run `bun run src/index.ts analyze` — verify multi-type contributions scored. Test guardrails: attempt to exceed rate limits, verify blocking. Test with archived repo in list — verify skip. Save evidence to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance. Detect cross-task contamination.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 
