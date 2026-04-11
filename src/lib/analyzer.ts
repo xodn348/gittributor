@@ -51,9 +51,9 @@ function createTempRepoPath(repo: Repository): string {
   return path.join(tmpdir(), `gittributor-${repo.name}-${Date.now()}`);
 }
 
-function createLargeRepoResult(repo: Repository, issue: Issue): AnalysisResult {
+function createLargeRepoResult(repo: Repository, issue?: Issue): AnalysisResult {
   return {
-    issueId: issue.id,
+    issueId: issue?.id ?? 0,
     repoFullName: repo.fullName,
     relevantFiles: [],
     suggestedApproach: "Skip automated analysis because the repository exceeds the analyzer size limit.",
@@ -164,9 +164,22 @@ function listSourceFiles(directoryPath: string): string[] {
   return discoveredFiles;
 }
 
-const PREFERRED_SOURCE_DIRS = ["src", "source", "lib"];
+const PREFERRED_SOURCE_DIRS = ["src", "source", "lib", "app", "packages", "modules"];
 
-function rankSourceFiles(repoPath: string, issue: Issue): string[] {
+function getFileSizeScore(filePath: string): number {
+  try {
+    const stat = readFileSync(filePath, "utf8");
+    const lines = stat.split("\n").length;
+    if (lines < 50) return 0.3;
+    if (lines <= 2000) return 1.0;
+    if (lines <= 5000) return 0.6;
+    return 0.2;
+  } catch {
+    return 0.5;
+  }
+}
+
+function rankSourceFiles(repoPath: string, issue?: Issue): string[] {
   let sourceFiles: string[] = [];
   for (const dir of PREFERRED_SOURCE_DIRS) {
     sourceFiles = listSourceFiles(path.join(repoPath, dir));
@@ -174,7 +187,7 @@ function rankSourceFiles(repoPath: string, issue: Issue): string[] {
   }
   const fallbackFiles = sourceFiles.length > 0 ? sourceFiles : listSourceFiles(repoPath);
   const relativeFiles = fallbackFiles.map((absolutePath) => path.relative(repoPath, absolutePath));
-  const mentionedFiles = parseMentionedFiles(issue);
+  const mentionedFiles = issue ? parseMentionedFiles(issue) : [];
 
   return [...relativeFiles]
     .sort((leftFile, rightFile) => {
@@ -193,6 +206,15 @@ function rankSourceFiles(repoPath: string, issue: Issue): string[] {
         return leftMentionIndex - rightMentionIndex;
       }
 
+      const leftAbs = path.join(repoPath, leftFile);
+      const rightAbs = path.join(repoPath, rightFile);
+      const leftScore = getFileSizeScore(leftAbs);
+      const rightScore = getFileSizeScore(rightAbs);
+
+      if (leftScore !== rightScore) {
+        return rightScore - leftScore;
+      }
+
       return leftFile.localeCompare(rightFile);
     })
     .slice(0, MAX_ANALYZED_FILES);
@@ -209,7 +231,7 @@ function truncateFileByLines(filePath: string): string {
 
 function buildAnalysisPrompt(
   repo: Repository,
-  issue: Issue,
+  issue: Issue | undefined,
   repoPath: string,
   relevantFiles: string[],
 ): string {
@@ -219,6 +241,18 @@ function buildAnalysisPrompt(
       return `File: ${relativeFilePath}\n${truncateFileByLines(absoluteFilePath)}`;
     })
     .join("\n\n");
+
+  if (!issue) {
+    return [
+      "Discover bugs, security issues, type errors, performance problems, and logic errors in this repository.",
+      "Focus on finding actionable, self-contained issues that can be fixed with minimal changes.",
+      `Repository: ${repo.fullName}`,
+      `Description: ${repo.description ?? "(no description)"}`,
+      "Selected Files:",
+      fileBlocks || "(no relevant files found)",
+      "Respond as JSON with keys: rootCause (string), affectedFiles (string[]), suggestedApproach (string), complexity (\"low\"|\"medium\"|\"high\"), confidence (0..1).",
+    ].join("\n\n");
+  }
 
   return [
     "Analyze this GitHub issue against the selected repository files.",
@@ -283,17 +317,20 @@ async function persistAnalysisResult(analysis: AnalysisResult): Promise<void> {
 
 async function requestAnalysis(
   repo: Repository,
-  issue: Issue,
+  issue: Issue | undefined,
   repoPath: string,
   selectedFiles: string[],
 ): Promise<AnalysisResult> {
+  const systemPrompt = issue
+    ? ANALYZER_SYSTEM_PROMPT
+    : "You are discovering bugs, security issues, type errors, and logic errors in a codebase. Identify actionable issues and suggest which files need changes.";
   const prompt = buildAnalysisPrompt(repo, issue, repoPath, selectedFiles);
   const responseText = await callModel({
     provider: Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim() === "openai" ? "openai" : "anthropic",
     apiKey: Bun.env.OPENAI_API_KEY?.trim() ?? Bun.env.ANTHROPIC_API_KEY?.trim(),
     oauthToken: Bun.env.OPENAI_OAUTH_TOKEN?.trim() ?? Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
     model: Bun.env.OPENAI_MODEL?.trim(),
-    system: ANALYZER_SYSTEM_PROMPT,
+    system: systemPrompt,
     prompt,
     maxTokens: ANALYZER_MAX_TOKENS,
   });
@@ -301,7 +338,7 @@ async function requestAnalysis(
   const normalizedRelevantFiles = normalizeRelevantFiles(selectedFiles, parsedAnalysis.affectedFiles);
 
   return {
-    issueId: issue.id,
+    issueId: issue?.id ?? 0,
     repoFullName: repo.fullName,
     relevantFiles: normalizedRelevantFiles,
     suggestedApproach: parsedAnalysis.suggestedApproach,
@@ -318,9 +355,11 @@ async function requestAnalysis(
 
 /**
  * Analyze a repository snapshot against a GitHub issue using a shallow clone and Anthropic.
+ * When issue is absent, runs in free-form discovery mode to find bugs, security issues,
+ * type errors, and logic errors.
  *
  * @param repo - Repository metadata used for GitHub CLI lookup and shallow cloning.
- * @param issue - GitHub issue metadata used to rank relevant files and describe the problem.
+ * @param issue - Optional GitHub issue metadata. When absent, discovers issues proactively.
  * @returns A persisted analysis payload including relevant files, root cause, and suggested approach.
  * @throws {GitHubAPIError} When the GitHub CLI commands fail.
  * @throws {AnalyzerError} When repository metadata or Anthropic responses are malformed.
@@ -328,8 +367,11 @@ async function requestAnalysis(
  * @example
  * const analysis = await analyzeCodebase(repo, issue);
  * console.log(analysis.relevantFiles);
+ * @example
+ * const analysis = await analyzeCodebase(repo);
+ * console.log(analysis.relevantFiles);
  */
-export async function analyzeCodebase(repo: Repository, issue: Issue): Promise<AnalysisResult> {
+export async function analyzeCodebase(repo: Repository, issue?: Issue): Promise<AnalysisResult> {
   const repoDetails = await getRepoDetails(repo);
   if (repoDetails.diskUsageKb > MAX_REPO_SIZE_KB) {
     warn(`Skipping ${repo.fullName} because size is ${repoDetails.diskUsageKb}KB (>100MB).`);

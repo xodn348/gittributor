@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, it, expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "os";
 import { join } from "node:path";
-import type { ContributionOpportunity, TrendingRepo, Config } from "../src/types/index.js";
+import type { AnalysisResult, Config, Issue, Repository, TrendingRepo } from "../src/types/index.js";
 import type { RunDependencies } from "../src/commands/run.js";
+import type { FixResult } from "../src/lib/fix-generator.js";
 
 const mockConfig = (overrides: Partial<Config> = {}): Config => ({
   aiProvider: "anthropic",
@@ -23,30 +24,49 @@ const mockConfig = (overrides: Partial<Config> = {}): Config => ({
 });
 import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
-const mockOpportunity = (overrides: Partial<ContributionOpportunity> = {}): ContributionOpportunity => ({
-  repo: {
-    owner: "test-owner",
-    name: "test-repo",
-    fullName: "test-owner/test-repo",
-    stars: 5000,
-    language: "TypeScript",
-    description: "A test repo",
-    isArchived: false,
-    defaultBranch: "main",
-    hasContributing: true,
-    topics: ["good-first-issue"],
-    openIssues: 10,
-  },
-  type: "typo",
-  filePath: "README.md",
-  description: "Fix a typo",
-  mergeProbability: {
-    score: 0.75,
-    label: "high",
-    reasons: ["good stars"],
-  },
-  detectedAt: new Date().toISOString(),
+const mockRepository = (overrides: Partial<Repository> = {}): Repository => ({
+  id: 1,
+  name: "test-repo",
+  fullName: "test-owner/test-repo",
+  url: "https://github.com/test-owner/test-repo",
+  stars: 5000,
+  language: "TypeScript",
+  openIssuesCount: 10,
+  updatedAt: "2026-04-01T00:00:00.000Z",
+  description: "A test repo",
   ...overrides,
+});
+
+const mockIssue = (overrides: Partial<Issue> = {}): Issue => ({
+  id: 1,
+  number: 1,
+  title: "Test issue",
+  body: "Test issue body",
+  url: "https://github.com/test-owner/test-repo/issues/1",
+  repoFullName: "test-owner/test-repo",
+  labels: ["bug"],
+  createdAt: "2026-04-01T00:00:00.000Z",
+  assignees: [],
+  ...overrides,
+});
+
+const mockAnalysisResult = (overrides: Partial<AnalysisResult> = {}): AnalysisResult => ({
+  issueId: 0,
+  repoFullName: "test-owner/test-repo",
+  relevantFiles: ["src/test.ts"],
+  suggestedApproach: "Add null check",
+  confidence: 0.8,
+  analyzedAt: new Date().toISOString(),
+  rootCause: "Missing guard",
+  affectedFiles: ["src/test.ts"],
+  complexity: "low",
+  ...overrides,
+});
+
+const mockFixResult = () => ({
+  changes: [{ file: "src/test.ts", original: "foo", modified: "bar" }] as FixResult["changes"],
+  explanation: "Added null check",
+  confidence: 0.8,
 });
 
 const mockTrendingRepo = (overrides: Partial<TrendingRepo> = {}): TrendingRepo => ({
@@ -67,14 +87,11 @@ const mockTrendingRepo = (overrides: Partial<TrendingRepo> = {}): TrendingRepo =
 const makeDeps = (overrides: Partial<RunDependencies> = {}): RunDependencies => ({
   loadConfig: async () => mockConfig(),
   discoverRepos: async () => [],
-  analyzeRepositories: async () => [],
-  routeContribution: async () => ({ patch: "", description: "", confidence: 0 }),
+  analyzeCodebase: async () => mockAnalysisResult(),
+  generateFix: async () => mockFixResult(),
   reviewContributions: async () => 0,
   submitApprovedFix: async () => 0,
   showHistoryStats: async () => {},
-  setStateData: async () => {},
-  loadState: async () => ({}),
-  saveState: async () => {},
   ...overrides,
 });
 
@@ -147,13 +164,13 @@ describe("run command V2 pipeline", () => {
           order.push("discover");
           return [mockTrendingRepo()];
         },
-        analyzeRepositories: async () => {
+        analyzeCodebase: async () => {
           order.push("analyze");
-          return [mockOpportunity()];
+          return mockAnalysisResult();
         },
-        routeContribution: async () => {
+        generateFix: async () => {
           order.push("fix");
-          return { patch: "", description: "", confidence: 0 };
+          return mockFixResult();
         },
         reviewContributions: async () => {
           order.push("review");
@@ -163,9 +180,6 @@ describe("run command V2 pipeline", () => {
           order.push("submit");
           return 0;
         },
-        setStateData: async () => {},
-        loadState: async () => ({}),
-        saveState: async () => {},
       });
 
       const exitCode = await runOrchestrator({}, deps);
@@ -173,94 +187,29 @@ describe("run command V2 pipeline", () => {
       expect(order).toEqual(["discover", "analyze", "fix", "review", "submit"]);
     });
 
-    it("stops after analyze in --dry-run mode", async () => {
+    it("calls analyze in --dry-run mode but skips fix/review/submit", async () => {
       const { runOrchestrator } = await import("../src/commands/run.js");
 
-      let routeCalled = false;
+      let analyzeCalled = false;
+      let fixCalled = false;
       let reviewCalled = false;
       let submitCalled = false;
 
       const deps = makeDeps({
         discoverRepos: async () => [mockTrendingRepo()],
-        analyzeRepositories: async () => [mockOpportunity()],
-        routeContribution: async () => { routeCalled = true; return { patch: "", description: "", confidence: 0 }; },
+        analyzeCodebase: async () => { analyzeCalled = true; return mockAnalysisResult(); },
+        generateFix: async () => { fixCalled = true; return mockFixResult(); },
         reviewContributions: async () => { reviewCalled = true; return 0; },
         submitApprovedFix: async () => { submitCalled = true; return 0; },
-        setStateData: async () => {},
-        loadState: async () => ({}),
-        saveState: async () => {},
       });
 
       const exitCode = await runOrchestrator({ dryRun: true }, deps);
 
       expect(exitCode).toBe(0);
-      expect(routeCalled).toBe(false);
+      expect(analyzeCalled).toBe(true);
+      expect(fixCalled).toBe(false);
       expect(reviewCalled).toBe(false);
       expect(submitCalled).toBe(false);
-    });
-
-    it("filters opportunities by type when --type flag is provided", async () => {
-      const { runOrchestrator } = await import("../src/commands/run.js");
-
-      const typoOpp = mockOpportunity({ type: "typo" });
-      const docsOpp = mockOpportunity({ type: "docs" });
-
-      let capturedType: string | null = null;
-
-      const deps = makeDeps({
-        discoverRepos: async () => [mockTrendingRepo()],
-        analyzeRepositories: async () => [typoOpp, docsOpp],
-        routeContribution: async (opp: ContributionOpportunity) => {
-          capturedType = opp.type;
-          return { patch: "", description: "", confidence: 0 };
-        },
-        reviewContributions: async () => 0,
-        submitApprovedFix: async () => 0,
-        setStateData: async () => {},
-        loadState: async () => ({}),
-        saveState: async () => {},
-      });
-
-      const exitCode = await runOrchestrator({ type: "typo" }, deps);
-
-      expect(exitCode).toBe(0);
-      expect(capturedType).toBe("typo");
-    });
-
-    it("does not call fix/review/submit when no opportunities are found", async () => {
-      const { runOrchestrator } = await import("../src/commands/run.js");
-
-      let routeCalled = false;
-
-      const deps = makeDeps({
-        discoverRepos: async () => [mockTrendingRepo()],
-        analyzeRepositories: async () => [],
-        routeContribution: async () => { routeCalled = true; return { patch: "", description: "", confidence: 0 }; },
-        setStateData: async () => {},
-        loadState: async () => ({}),
-        saveState: async () => {},
-      });
-
-      const exitCode = await runOrchestrator({}, deps);
-
-      expect(exitCode).toBe(0);
-      expect(routeCalled).toBe(false);
-    });
-
-    it("skips analyze when no repos discovered", async () => {
-      const { runOrchestrator } = await import("../src/commands/run.js");
-
-      let analyzeCalled = false;
-
-      const deps = makeDeps({
-        discoverRepos: async () => [],
-        analyzeRepositories: async () => { analyzeCalled = true; return []; },
-      });
-
-      const exitCode = await runOrchestrator({}, deps);
-
-      expect(exitCode).toBe(0);
-      expect(analyzeCalled).toBe(false);
     });
 
     it("calls --stats before pipeline starts", async () => {
@@ -279,61 +228,110 @@ describe("run command V2 pipeline", () => {
       expect(statsCalled).toBe(true);
       expect(discoverCalled).toBe(true);
     });
-  });
 
-  describe("V2 pipeline integration", () => {
-    it("passes repos from discoverRepos to analyzeRepositories", async () => {
+    it("does not call generateFix/review/submit when no repos discovered", async () => {
       const { runOrchestrator } = await import("../src/commands/run.js");
 
-      const repos = [mockTrendingRepo({ fullName: "owner/repo1" })];
-      const opps = [mockOpportunity()];
-
-      let passedRepos: TrendingRepo[] = [];
+      let fixCalled = false;
+      let reviewCalled = false;
+      let submitCalled = false;
 
       const deps = makeDeps({
-        discoverRepos: async () => repos,
-        analyzeRepositories: async (passed: TrendingRepo[]) => {
-          passedRepos = passed;
-          return opps;
-        },
-        routeContribution: async () => ({ patch: "", description: "", confidence: 0 }),
-        reviewContributions: async () => 0,
-        submitApprovedFix: async () => 0,
-        setStateData: async () => {},
-        loadState: async () => ({}),
-        saveState: async () => {},
+        discoverRepos: async () => [],
+        generateFix: async () => { fixCalled = true; return mockFixResult(); },
+        reviewContributions: async () => { reviewCalled = true; return 0; },
+        submitApprovedFix: async () => { submitCalled = true; return 0; },
       });
 
-      await runOrchestrator({}, deps);
+      const exitCode = await runOrchestrator({}, deps);
 
-      expect(passedRepos).toEqual(repos);
+      expect(exitCode).toBe(0);
+      expect(fixCalled).toBe(false);
+      expect(reviewCalled).toBe(false);
+      expect(submitCalled).toBe(false);
     });
 
-    it("only calls routeContribution once when type=typo from mixed opportunities", async () => {
+    it("skips analyze when no repos discovered", async () => {
       const { runOrchestrator } = await import("../src/commands/run.js");
 
-      const typoOpp = mockOpportunity({ type: "typo" });
-      const docsOpp = mockOpportunity({ type: "docs" });
+      let analyzeCalled = false;
 
-      let routeCallCount = 0;
+      const deps = makeDeps({
+        discoverRepos: async () => [],
+        analyzeCodebase: async () => { analyzeCalled = true; return mockAnalysisResult(); },
+      });
+
+      const exitCode = await runOrchestrator({}, deps);
+
+      expect(exitCode).toBe(0);
+      expect(analyzeCalled).toBe(false);
+    });
+
+    it("passes typeFilter to review when --type flag is provided", async () => {
+      const { runOrchestrator } = await import("../src/commands/run.js");
+
+      let passedTypeFilter: string | undefined = undefined;
 
       const deps = makeDeps({
         discoverRepos: async () => [mockTrendingRepo()],
-        analyzeRepositories: async () => [typoOpp, docsOpp],
-        routeContribution: async () => {
-          routeCallCount++;
-          return { patch: "", description: "", confidence: 0 };
+        analyzeCodebase: async () => mockAnalysisResult(),
+        generateFix: async () => mockFixResult(),
+        reviewContributions: async (opts: { typeFilter?: string }) => {
+          passedTypeFilter = opts.typeFilter;
+          return 0;
         },
-        reviewContributions: async () => 0,
         submitApprovedFix: async () => 0,
-        setStateData: async () => {},
-        loadState: async () => ({}),
-        saveState: async () => {},
       });
 
       await runOrchestrator({ type: "typo" }, deps);
 
-      expect(routeCallCount).toBe(1);
+      expect(String(passedTypeFilter)).toBe("typo");
+    });
+  });
+
+  describe("V2 pipeline integration", () => {
+    it("passes Repository to analyzeCodebase for each discovered repo", async () => {
+      const { runOrchestrator } = await import("../src/commands/run.js");
+
+      const repo1 = mockTrendingRepo({ fullName: "owner/repo1" });
+      const repo2 = mockTrendingRepo({ fullName: "owner/repo2" });
+
+      let passedRepos: Repository[] = [];
+
+      const deps = makeDeps({
+        discoverRepos: async () => [repo1, repo2],
+        analyzeCodebase: async (repo: Repository) => {
+          passedRepos.push(repo);
+          return mockAnalysisResult({ repoFullName: repo.fullName });
+        },
+        generateFix: async () => mockFixResult(),
+        reviewContributions: async () => 0,
+        submitApprovedFix: async () => 0,
+      });
+
+      await runOrchestrator({}, deps);
+
+      expect(passedRepos.length).toBe(2);
+      expect(passedRepos[0]?.fullName).toBe("owner/repo1");
+      expect(passedRepos[1]?.fullName).toBe("owner/repo2");
+    });
+
+    it("generates fix after successful analysis", async () => {
+      const { runOrchestrator } = await import("../src/commands/run.js");
+
+      let fixCallCount = 0;
+
+      const deps = makeDeps({
+        discoverRepos: async () => [mockTrendingRepo()],
+        analyzeCodebase: async () => mockAnalysisResult(),
+        generateFix: async () => { fixCallCount++; return mockFixResult(); },
+        reviewContributions: async () => 0,
+        submitApprovedFix: async () => 0,
+      });
+
+      await runOrchestrator({}, deps);
+
+      expect(fixCallCount).toBe(1);
     });
   });
 });

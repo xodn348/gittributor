@@ -4,9 +4,10 @@ import { setStateData, saveState, loadState, resetState } from "../lib/state.js"
 import { error as logError } from "../lib/logger.js";
 import { loadConfig, getTargetLanguages } from "../lib/config.js";
 import { getGlobalWeeklyCount, MAX_GLOBAL_WEEKLY } from "../lib/guardrails.js";
-import type { Config, ContributionOpportunity, ContributionType, TrendingRepo } from "../types/index.js";
+import type { AnalysisResult, Config, ContributionType, Issue, Repository, TrendingRepo } from "../types/index.js";
+import type { FixResult as GeneratedFixResult } from "../lib/fix-generator.js";
 
-const VALID_TYPES: readonly ContributionType[] = ["typo", "docs", "deps", "test", "code"];
+const VALID_TYPES: readonly ContributionType[] = ["typo", "docs", "deps", "test", "code", "bug-fix", "performance", "type-safety", "logic-error", "static-analysis"];
 
 export interface RunOptions {
   dryRun?: boolean;
@@ -18,8 +19,8 @@ export interface RunOptions {
 export interface RunDependencies {
   loadConfig?: () => Promise<Config>;
   discoverRepos: (options: Record<string, unknown>) => Promise<TrendingRepo[]>;
-  analyzeRepositories: (repos: TrendingRepo[]) => Promise<ContributionOpportunity[]>;
-  routeContribution: (opp: ContributionOpportunity) => Promise<{ patch: string; description: string; confidence: number }>;
+  analyzeCodebase: (repo: Repository, issue?: Issue) => Promise<AnalysisResult>;
+  generateFix: (analysis: AnalysisResult, issue: Issue, repo: Repository) => Promise<GeneratedFixResult>;
   reviewContributions: (options: { typeFilter?: ContributionType }) => Promise<number>;
   submitApprovedFix: (options?: Record<string, unknown>) => Promise<number>;
   showHistoryStats: (path: string, options?: { stdout?: WritableLike }) => Promise<void>;
@@ -66,25 +67,6 @@ export async function showHistoryStats(
 
 const printStage = (emoji: string, message: string): void => {
   process.stdout.write(emoji + " " + message + "\n");
-};
-
-const printSummary = (opportunities: ContributionOpportunity[]): void => {
-  process.stdout.write("\n=== Pipeline Summary ===\n");
-  process.stdout.write("Total opportunities: " + opportunities.length + "\n");
-  const byType: Record<string, number> = {};
-  for (const opp of opportunities) {
-    byType[opp.type] = (byType[opp.type] ?? 0) + 1;
-  }
-  for (const [type, count] of Object.entries(byType)) {
-    process.stdout.write("  " + type + ": " + count + "\n");
-  }
-};
-
-const filterByType = (
-  opportunities: ContributionOpportunity[],
-  type: ContributionType,
-): ContributionOpportunity[] => {
-  return opportunities.filter((opp) => opp.type === type);
 };
 
 export function parseRunFlags(args: string[]): RunOptions {
@@ -152,13 +134,13 @@ export async function runOrchestrator(
     const { discoverRepos: fn } = await import("./discover.js");
     return fn(opts as Parameters<typeof fn>[0]);
   });
-  const analyze = deps.analyzeRepositories ?? (async (repos: TrendingRepo[]) => {
-    const { analyzeRepositories: fn } = await import("./analyze.js");
-    return fn(repos);
+  const analyzeCodebase = deps.analyzeCodebase ?? (async (repo: Repository, issue?: Issue) => {
+    const { analyzeCodebase: fn } = await import("../lib/analyzer.js");
+    return fn(repo, issue);
   });
-  const route = deps.routeContribution ?? (async (opp: ContributionOpportunity) => {
-    const { routeContribution: fn } = await import("../lib/fix-router.js");
-    return fn(opp);
+  const generateFix = deps.generateFix ?? (async (analysis: AnalysisResult, issue: Issue, repo: Repository) => {
+    const { generateFix: fn } = await import("../lib/fix-generator.js");
+    return fn(analysis, issue, repo);
   });
   const review = deps.reviewContributions ?? (async (opts: { typeFilter?: ContributionType }) => {
     const { reviewContributions: fn } = await import("./review.js");
@@ -193,34 +175,73 @@ export async function runOrchestrator(
         continue;
       }
 
-      printStage("📊", "Analyzing contributions...");
-      const opportunities = await analyze(repos);
-      let filtered = opportunities;
-      if (options.type) {
-        filtered = filterByType(opportunities, options.type);
-        process.stdout.write("Filtered to " + filtered.length + " " + options.type + " opportunities.\n");
+      printStage("📊", "Analyzing repositories...");
+      const eligibleRepos = repos.slice(0, 5);
+      const analyses: AnalysisResult[] = [];
+      for (const tr of eligibleRepos) {
+        process.stdout.write("  Analyzing: " + tr.fullName + "\n");
+        const repo: Repository = {
+          id: 0,
+          name: tr.name,
+          fullName: tr.fullName,
+          url: `https://github.com/${tr.fullName}`,
+          stars: tr.stars,
+          language: tr.language,
+          openIssuesCount: tr.openIssues,
+          updatedAt: new Date().toISOString(),
+          description: tr.description,
+        };
+        const analysis = await analyzeCodebase(repo);
+        analyses.push(analysis);
+        process.stdout.write("    Analysis: " + (analysis.suggestedApproach.slice(0, 80)) + "...\n");
       }
-      if (filtered.length === 0) {
-        process.stdout.write("No contribution opportunities found.\n");
+      if (analyses.length === 0) {
+        process.stdout.write("No repositories could be analyzed.\n");
         printStage("✅", `Pipeline complete for ${language}.`);
         continue;
       }
 
       if (options.dryRun) {
-        printSummary(filtered);
+        process.stdout.write("\n=== Pipeline Summary ===\n");
+        process.stdout.write("Total analyzed: " + analyses.length + "\n");
+        for (const a of analyses) {
+          process.stdout.write("  " + a.suggestedApproach.slice(0, 80) + "...\n");
+        }
         printStage("✅", `Pipeline complete for ${language}.`);
         continue;
       }
 
-      printStage("🔧", "Fixing contributions...");
-      for (const opp of filtered) {
-        process.stdout.write("  " + opp.repo.fullName + ": " + opp.description + "\n");
-        await setStateData("currentOpportunity", opp);
-        await route(opp);
+      printStage("🔧", "Generating fixes...");
+      const results: GeneratedFixResult[] = [];
+      for (let i = 0; i < eligibleRepos.length; i++) {
+        const tr = eligibleRepos[i];
+        const analysis = analyses[i];
+        const repo: Repository = {
+          id: 0,
+          name: tr.name,
+          fullName: tr.fullName,
+          url: `https://github.com/${tr.fullName}`,
+          stars: tr.stars,
+          language: tr.language,
+          openIssuesCount: tr.openIssues,
+          updatedAt: new Date().toISOString(),
+          description: tr.description,
+        };
+        const syntheticIssue: Issue = {
+          id: 0,
+          number: 0,
+          title: "Free-form analysis",
+          body: analysis.suggestedApproach,
+          url: `https://github.com/${tr.fullName}`,
+          repoFullName: tr.fullName,
+          labels: [],
+          createdAt: new Date().toISOString(),
+          assignees: [],
+        };
+        const fixResult = await generateFix(analysis, syntheticIssue, repo);
+        results.push(fixResult);
+        process.stdout.write("    Fix: " + (fixResult.explanation.slice(0, 80)) + "...\n");
       }
-
-      const currentState = await loadState();
-      await saveState({ ...currentState, status: "fixed" });
 
       printStage("👀", "Reviewing contributions...");
       await review({ typeFilter: options.type ?? undefined });
