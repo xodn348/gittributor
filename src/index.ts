@@ -2,7 +2,7 @@
 
 import { discoverIssues, printIssueProposalTable } from "./commands/analyze.js";
 import { CLIArgumentError, parseArgs } from "./commands/cli";
-import { discoverRepos } from "./commands/discover";
+import { discoverRepos, discoverReposFromAPI } from "./commands/discover";
 import { reviewFix } from "./commands/review";
 import { submitApprovedFix } from "./commands/submit";
 import { analyzeCodebase, sanitizeAnalysisForPersistence } from "./lib/analyzer";

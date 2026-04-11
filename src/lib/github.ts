@@ -346,4 +346,12 @@ export class GitHubClient {
     }
   }
 
+  async checkFileExists(repoFullName: string, filename: string): Promise<boolean> {
+    try {
+      await this.runCommand(["gh", "api", `repos/${repoFullName}/contents/${filename}`]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }

@@ -1,12 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { GitHubClient } from "../lib/github.js";
+import { GitHubClient, GitHubAPIError } from "../lib/github.js";
 import { loadRepoList, filterRepoList } from "../lib/repo-list.js";
-import { loadConfig } from "../lib/config.js";
+import { loadConfig, discoveryConfig } from "../lib/config.js";
 import { loadState, saveState, setStateData } from "../lib/state.js";
 import { checkRepoEligibility } from "../lib/guardrails.js";
-import { info, log, debug } from "../lib/logger.js";
+import { info, log, debug, warn } from "../lib/logger.js";
 import type { TrendingRepo, Repository, MergeProbability, Config } from "../types/index.js";
+import { toTrendingRepo } from "../types/index.js";
 
 const ANSI_RESET = "\x1b[0m";
 const ANSI_GREEN = "\x1b[32m";
@@ -20,6 +21,137 @@ const DISCOVERY_DIR = ".gittributor";
 const DISCOVERY_FILE = "discoveries.json";
 
 const DAYS_AGO_90 = 90;
+const DAYS_AGO_30 = 30;
+
+const THIRTY_DAYS_MS = DAYS_AGO_30 * 24 * 60 * 60 * 1000;
+
+const scoreRepo = (repo: TrendingRepo): number => {
+  let score = 0;
+
+  if (repo.stars >= 1000 && repo.stars <= 10000) {
+    score += 30;
+  } else if (repo.stars > 10000 && repo.stars <= 50000) {
+    score += 15;
+  }
+
+  if (repo.openIssues > 5) {
+    score += 20;
+  } else if (repo.openIssues > 0) {
+    score += 5;
+  }
+
+  if (repo.hasContributing) {
+    score += 25;
+  }
+
+  if (repo.topics && repo.topics.length > 0) {
+    const hasGoodFirst = repo.topics.some(
+      (t) => t.toLowerCase().includes("good-first") || t.toLowerCase().includes("good first")
+    );
+    if (hasGoodFirst) {
+      score += 10;
+    }
+  }
+
+  return score;
+};
+
+const isRecentlyActive = (updatedAt: string): boolean => {
+  const updatedMs = Date.parse(updatedAt);
+  if (!Number.isFinite(updatedMs)) return false;
+  return Date.now() - updatedMs <= THIRTY_DAYS_MS;
+};
+
+const checkContributingMd = async (client: GitHubClient, repoFullName: string): Promise<boolean> => {
+  try {
+    await client.checkFileExists(repoFullName, "CONTRIBUTING.md");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export async function discoverReposFromAPI(client: GitHubClient): Promise<TrendingRepo[]> {
+  const languages = discoveryConfig.staticAnalysisEnabled
+    ? ["typescript", "javascript", "python"]
+    : ["typescript"];
+
+  let fetchedRepos: Repository[] = [];
+
+  try {
+    fetchedRepos = await client.searchRepositories({
+      minStars: discoveryConfig.minStars,
+      languages,
+      limit: discoveryConfig.maxReposPerRun * 4,
+    });
+  } catch (err) {
+    if (err instanceof GitHubAPIError) {
+      const msg = err.message.toLowerCase();
+      if (msg.includes("authentication") || msg.includes("auth") || msg.includes("token") || msg.includes("unauthorized") || err.exitCode === 1) {
+        warn("GitHub authentication required. Please run 'gh auth login' first.");
+        warn("Falling back to curated repo list...");
+      } else {
+        warn(`GitHub API error: ${err.message}. Falling back to curated repo list...`);
+      }
+    } else {
+      warn(`Discovery failed: ${String(err)}. Falling back to curated repo list...`);
+    }
+    return [];
+  }
+
+  if (fetchedRepos.length === 0) {
+    debug("No repos found from GitHub search, trying curated list...");
+    return [];
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - DAYS_AGO_30);
+  const cutoffDate = thirtyDaysAgo.toISOString();
+
+  const recentlyActive = fetchedRepos.filter((r) => r.updatedAt >= cutoffDate);
+
+  if (recentlyActive.length === 0) {
+    debug("No repos with recent activity found, using all fetched repos");
+  }
+
+  const candidates = (recentlyActive.length > 0 ? recentlyActive : fetchedRepos)
+    .map((r) => toTrendingRepo(r))
+    .sort((a, b) => scoreRepo(b) - scoreRepo(a))
+    .slice(0, Math.min(discoveryConfig.maxReposPerRun, 3));
+
+  const enriched: TrendingRepo[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      const repoInfo = await client.getRepoInfo(candidate.fullName);
+
+      if (repoInfo.hasOpenUserPR) {
+        debug(`Filtered out ${candidate.fullName}: user already has open PR`);
+        continue;
+      }
+
+      if (repoInfo.isArchived) {
+        debug(`Filtered out ${candidate.fullName}: archived`);
+        continue;
+      }
+
+      const hasContributing = await checkContributingMd(client, candidate.fullName);
+
+      enriched.push({
+        ...candidate,
+        isArchived: repoInfo.isArchived,
+        hasContributing,
+      });
+    } catch (err) {
+      debug(`Failed to enrich ${candidate.fullName}: ${String(err)}`);
+      enriched.push(candidate);
+    }
+  }
+
+  return enriched
+    .sort((a, b) => scoreRepo(b) - scoreRepo(a))
+    .slice(0, discoveryConfig.maxReposPerRun);
+}
 
 export interface DiscoverOptions {
   language?: string;
@@ -267,7 +399,7 @@ const searchReposFallback = async (
   return repositories;
 };
 
-export async function discoverRepos(options: DiscoverOptions): Promise<TrendingRepo[]> {
+export async function runDiscoverCommand(options: DiscoverOptions): Promise<TrendingRepo[]> {
   const config = await loadConfig();
   const normalizedOptions = normalizeOptions(options);
   
@@ -331,3 +463,5 @@ export async function discoverRepos(options: DiscoverOptions): Promise<TrendingR
   log(renderDiscoverTable(trendingRepos));
   return trendingRepos;
 }
+
+export { runDiscoverCommand as discoverRepos };
