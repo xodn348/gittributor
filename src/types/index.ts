@@ -46,6 +46,9 @@ export interface AnalysisResult {
   affectedFiles?: string[];
   complexity?: "low" | "medium" | "high";
   fileContents?: Record<string, string>;
+  type?: ContributionType;
+  description?: string;
+  suggestedFix?: string;
 }
 
 export interface FixResult {

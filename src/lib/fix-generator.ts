@@ -1,6 +1,6 @@
 import { mkdirSync } from "fs";
 import { join } from "path";
-import type { AnalysisResult, Issue, Repository } from "../types/index";
+import type { AnalysisResult, ContributionType, Issue, Repository } from "../types/index";
 import { callModel } from "./ai";
 import { AnthropicAPIError, OpenAIAPIError } from "./errors";
 import { FixValidationError } from "./errors";
@@ -126,6 +126,13 @@ function validateFixScope(changes: FixChange[], relevantFiles: string[]): void {
       );
     }
   }
+
+  const changedFileCount = new Set(changes.map((c) => c.file)).size;
+  if (changedFileCount > 10) {
+    throw new FixValidationError(
+      `Fix scope is too broad. Only up to 10 relevant files may be modified, but ${changedFileCount} files were proposed.`,
+    );
+  }
 }
 
 function buildSystemPrompt(): string {
@@ -151,8 +158,56 @@ function buildFileContentsSection(analysis: AnalysisResult): string {
   return `<file-contents>\n${fileBlocks}\n</file-contents>`;
 }
 
+const CONTRIBUTION_TYPE_PROMPTS: Record<string, string> = {
+  "bug-fix": "This is a bug fix. Focus on identifying the root cause and implementing a minimal, targeted fix. Include inline comments explaining the bug and the fix.",
+  performance: "This is a performance optimization. Analyze the code for performance bottlenecks and propose efficient solutions. Consider time complexity, memory usage, and algorithmic improvements.",
+  "type-safety": "This is a TypeScript type safety improvement. Focus on adding proper type annotations, fixing type errors, and improving type inference. Ensure type safety without breaking existing functionality.",
+  "logic-error": "This is a logic error fix. The code compiles/runs but produces incorrect results. Identify the flawed logic and correct it with clear reasoning.",
+  "static-analysis": "This is a static analysis finding. Address linting warnings, code style issues, or potential bugs detected by static analysis tools.",
+  typo: "This is a typo correction. Fix spelling mistakes, grammatical errors, or formatting inconsistencies.",
+  docs: "This is a documentation improvement. Enhance code comments, README files, or user-facing documentation.",
+  deps: "This is a dependency update. Update package versions, add/remove dependencies, or upgrade API usage.",
+  test: "This is a test improvement. Add missing tests, improve test coverage, or fix existing test failures.",
+  code: "This is a general code improvement. Refactor for clarity, add missing functionality, or improve code quality.",
+};
+
+function buildContributionTypeSection(type?: ContributionType): string {
+  if (!type || !CONTRIBUTION_TYPE_PROMPTS[type]) {
+    return "";
+  }
+  return `<contribution-type>${CONTRIBUTION_TYPE_PROMPTS[type]}</contribution-type>`;
+}
+
+function buildRootCauseSection(rootCause?: string): string {
+  if (!rootCause) {
+    return "";
+  }
+  return `<root-cause>${rootCause}</root-cause>`;
+}
+
+function buildAffectedFilesSection(affectedFiles?: string[]): string {
+  if (!affectedFiles || affectedFiles.length === 0) {
+    return "";
+  }
+  return `<affected-files>${affectedFiles.join(", ")}</affected-files>`;
+}
+
+function buildSuggestedFixSection(suggestedFix?: string): string {
+  if (!suggestedFix) {
+    return "";
+  }
+  return `<suggested-fix>${suggestedFix}</suggested-fix>`;
+}
+
+function buildDescriptionSection(description?: string): string {
+  if (!description) {
+    return "";
+  }
+  return `<analysis-description>${description}</analysis-description>`;
+}
+
 function buildPrompt(analysis: AnalysisResult, issue: Issue, repo: Repository): string {
-  return [
+  const sections = [
     "Generate a fix proposal for this GitHub issue.",
     `<repository>${repo.fullName}</repository>`,
     `<repository-description>${repo.description ?? "(no description)"}</repository-description>`,
@@ -160,9 +215,16 @@ function buildPrompt(analysis: AnalysisResult, issue: Issue, repo: Repository): 
     `<issue-title>${issue.title}</issue-title>`,
     `<issue-description>${issue.body ?? "(no body)"}</issue-description>`,
     buildFileContentsSection(analysis),
+    buildContributionTypeSection(analysis.type),
+    buildRootCauseSection(analysis.rootCause),
+    buildAffectedFilesSection(analysis.affectedFiles),
+    buildDescriptionSection(analysis.description),
+    buildSuggestedFixSection(analysis.suggestedFix),
     `<analyzer-suggested-approach>${analysis.suggestedApproach}</analyzer-suggested-approach>`,
     `<analyzer-confidence>${analysis.confidence}</analyzer-confidence>`,
-  ].join("\n\n");
+  ];
+
+  return sections.filter((s) => s.length > 0).join("\n\n");
 }
 
 async function persistFixResult(issue: Issue, fixResult: FixResult): Promise<void> {
