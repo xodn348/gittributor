@@ -14,7 +14,6 @@ interface CapturedOutput {
 
 interface StubState {
   analyzeCodebaseCalls: number;
-  analyzeRepositoriesCalls: number;
   discoverIssuesCalls: number;
   discoverReposCalls: number;
   generateFixCalls: number;
@@ -113,7 +112,6 @@ const createFixture = async (options: FixtureOptions = {}): Promise<CliFixture> 
   const tempDir = await mkdtemp(join(tmpdir(), "gittributor-cli-entrypoint-"));
   const stubState: StubState = {
     analyzeCodebaseCalls: 0,
-    analyzeRepositoriesCalls: 0,
     discoverIssuesCalls: 0,
     discoverReposCalls: 0,
     generateFixCalls: 0,
@@ -178,30 +176,7 @@ export const discoverIssues = async (): Promise<unknown[]> => {
   }];
 };
 
-export const analyzeRepositories = async (repos: unknown[]): Promise<unknown[]> => {
-  getStubState().analyzeRepositoriesCalls += 1;
-  process.stdout.write("[INFO] Found 1 contribution opportunities across 1 repositories.\\n");
-  return [{
-    repo: {
-      owner: "owner",
-      name: "repo",
-      fullName: "owner/repo",
-      stars: 1500,
-      language: "TypeScript",
-      description: "Test repo",
-      isArchived: false,
-      defaultBranch: "main",
-      hasContributing: false,
-      topics: [],
-      openIssues: 5,
-    },
-    type: "typo",
-    filePath: "README.md",
-    description: "Fix a typo",
-    mergeProbability: { score: 0.8, label: "high", reasons: [] },
-    detectedAt: new Date().toISOString(),
-  }];
-};
+
 
 export const printIssueProposalTable = (): void => {
   process.stdout.write("-------------------------------------------------\\n");
@@ -480,19 +455,6 @@ describe("runCli", () => {
 
     expect(result.exitCode).toBe(0);
     expect(fixture.state.discoverReposCalls).toBe(1);
-  });
-
-  it("dispatches analyze to discoverIssues", async () => {
-    const fixture = await useFixture();
-    const stdoutSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
-
-    const result = await fixture.runCli(["analyze"]);
-
-    expect(result.exitCode).toBe(0);
-    expect(fixture.state.analyzeRepositoriesCalls).toBe(1);
-    const renderedOutput = stdoutSpy.mock.calls.map(([chunk]) => String(chunk)).join("");
-    expect(renderedOutput).toContain("Found 1 contribution opportunities");
-    mock.restore();
   });
 
   it("returns exit code 1 when fix is skipped for oversized repositories", async () => {

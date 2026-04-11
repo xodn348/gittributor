@@ -21,7 +21,7 @@ export interface RunDependencies {
   discoverRepos: (options: Record<string, unknown>) => Promise<TrendingRepo[]>;
   analyzeCodebase: (repo: Repository, issue?: Issue) => Promise<AnalysisResult>;
   generateFix: (analysis: AnalysisResult, issue: Issue, repo: Repository) => Promise<GeneratedFixResult>;
-  reviewContributions: (options: { typeFilter?: ContributionType }) => Promise<number>;
+  reviewFix: (options?: { autoApprove?: boolean }) => Promise<number>;
   submitApprovedFix: (options?: Record<string, unknown>) => Promise<number>;
   showHistoryStats: (path: string, options?: { stdout?: WritableLike }) => Promise<void>;
 }
@@ -142,9 +142,9 @@ export async function runOrchestrator(
     const { generateFix: fn } = await import("../lib/fix-generator.js");
     return fn(analysis, issue, repo);
   });
-  const review = deps.reviewContributions ?? (async (opts: { typeFilter?: ContributionType }) => {
-    const { reviewContributions: fn } = await import("./review.js");
-    return fn(opts);
+  const review = deps.reviewFix ?? (async (opts: { autoApprove?: boolean } = {}) => {
+    const { reviewFixes: fn } = await import("./review.js");
+    return fn({}, opts);
   });
   const submit = deps.submitApprovedFix ?? (async (opts?: Record<string, unknown>) => {
     const { submitApprovedFix: fn } = await import("./submit.js");
@@ -207,6 +207,7 @@ export async function runOrchestrator(
         for (const a of analyses) {
           process.stdout.write("  " + a.suggestedApproach.slice(0, 80) + "...\n");
         }
+        await review({ autoApprove: true });
         printStage("✅", `Pipeline complete for ${language}.`);
         continue;
       }
@@ -244,7 +245,7 @@ export async function runOrchestrator(
       }
 
       printStage("👀", "Reviewing contributions...");
-      await review({ typeFilter: options.type ?? undefined });
+      await review({ autoApprove: options.dryRun });
 
       printStage("📤", "Submitting contribution...");
       const submitResult = await submit();

@@ -150,21 +150,6 @@ export interface MergeProbability {
   reasons: string[];
 }
 
-export interface ContributionOpportunity {
-  repo: TrendingRepo;
-  type: ContributionType;
-  filePath: string;
-  description: string;
-  original?: string;
-  replacement?: string;
-  section?: string;
-  packageName?: string;
-  oldVersion?: string;
-  newVersion?: string;
-  mergeProbability: MergeProbability;
-  detectedAt: string;
-}
-
 export type ContributionStatus = "pending" | "submitted" | "merged" | "closed" | "rejected";
 
 export interface ContributionHistory {

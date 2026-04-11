@@ -6,7 +6,7 @@ import { checkRateLimit, checkDuplicateContribution, checkRepoEligibility, recor
 import { saveContribution } from "../lib/history.js";
 import { checkContributingCompliance } from "../lib/contributing-checker.js";
 import { error as logError, warn } from "../lib/logger.js";
-import type { FixResult, PRSubmission, PipelineState, PipelineStatus, ContributionOpportunity, ContributionType } from "../types/index.js";
+import type { FixResult, PRSubmission, PipelineState, PipelineStatus, ContributionType } from "../types/index.js";
 
 const WORKSPACE_ROOT = ".gittributor/workspace";
 const AI_DISCLOSURE =
@@ -209,54 +209,7 @@ const buildSubmissionRecord = (
   };
 };
 
-const createTypoPRBody = (opportunity: ContributionOpportunity): string => {
-  const original = opportunity.original || "";
-  const replacement = opportunity.replacement || "";
-  const file = opportunity.filePath;
-
-  return [
-    `Fix typo: \`${original}\` → \`${replacement}\` in \`${file}\``,
-    "",
-    AI_DISCLOSURE,
-  ].join("\n");
-};
-
-const createDocsPRBody = (opportunity: ContributionOpportunity): string => {
-  const section = opportunity.section || "documentation";
-
-  return [
-    `Add missing \`${section}\` section to README`,
-    "",
-    AI_DISCLOSURE,
-  ].join("\n");
-};
-
-const createDepsPRBody = (opportunity: ContributionOpportunity): string => {
-  const packageName = opportunity.packageName || "dependency";
-  const oldVersion = opportunity.oldVersion || "";
-  const newVersion = opportunity.newVersion || "";
-
-  return [
-    `Bump \`${packageName}\` from \`${oldVersion}\` to \`${newVersion}\``,
-    "",
-    AI_DISCLOSURE,
-  ].join("\n");
-};
-
-const createPRBody = (issueNumber: number, fix: FixResultWithChanges, opportunity?: ContributionOpportunity): string => {
-  if (opportunity) {
-    const type = opportunity.type;
-    if (type === "typo") {
-      return createTypoPRBody(opportunity);
-    }
-    if (type === "docs") {
-      return createDocsPRBody(opportunity);
-    }
-    if (type === "deps") {
-      return createDepsPRBody(opportunity);
-    }
-  }
-
+const createPRBody = (issueNumber: number, fix: FixResultWithChanges): string => {
   const changedFiles = fix.changes.map((change) => `- \`${change.file}\``).join("\n");
   const summary = shortDescription(fix.explanation);
 
@@ -325,34 +278,13 @@ const applyFixChanges = async (workspacePath: string, fix: FixResultWithChanges)
   }
 };
 
-const findMatchingOpportunity = (
-  opportunities: ContributionOpportunity[],
-  repoFullName: string,
-  filePath: string,
-): ContributionOpportunity | undefined => {
-  return opportunities.find(
-    (opp) =>
-      opp.repo.fullName === repoFullName &&
-      opp.filePath === filePath
-  );
-};
-
-const getContributionType = (
-  opportunities: ContributionOpportunity[],
-  repoFullName: string,
-  filePath: string,
-): ContributionType => {
-  const match = findMatchingOpportunity(opportunities, repoFullName, filePath);
-  return match?.type || "code";
-};
-
 export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<number> => {
   const config = await loadConfig();
   const rateLimitsPath = options.rateLimitsPath || ".gittributor/rate-limits.json";
   const historyPath = options.historyPath || config.historyPath || ".gittributor/history.json";
 
   const state = await loadState();
-  const reviewState = getStateData<ReviewStateData>("review");
+  const reviewState = (state as unknown as { data?: { review?: ReviewStateData } }).data?.review ?? null;
   const stateData: SubmissionStateData = {
     review: reviewState ?? undefined,
   };
@@ -387,9 +319,18 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
       throw new Error(`Cannot submit: invalid repository name '${repoFullName}'`);
     }
 
-    const contributionOpportunities = getStateData<ContributionOpportunity[]>("contributionOpportunities") || [];
     const primaryFilePath = fix.changes[0]?.file || "";
-    const contributionType = getContributionType(contributionOpportunities, repoFullName, primaryFilePath);
+    const contributionType: ContributionType = "code";
+
+    if (options.dryRun) {
+      const prTitle = `fix(#${issue.number}): ${shortDescription(issue.title)}`;
+      const prBody = createPRBody(issue.number, fix);
+      process.stdout.write("\n=== PR Preview (dry-run) ===\n");
+      process.stdout.write(`Title: ${prTitle}\n`);
+      process.stdout.write(`Body:\n${prBody}\n`);
+      process.stdout.write("=============================\n");
+      return 0;
+    }
 
     const rateLimitCheck = await checkRateLimit(repoFullName, rateLimitsPath);
     if (!rateLimitCheck.passed) {
@@ -398,7 +339,7 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
 
     const duplicateCheck = await checkDuplicateContribution(
       repoFullName,
-      primaryFilePath,
+      fix.changes[0]?.file || "",
       contributionType,
       historyPath,
     );
@@ -406,23 +347,11 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
       throw new Error(`Cannot submit: ${duplicateCheck.reason}`);
     }
 
-    const matchingOpportunity = findMatchingOpportunity(contributionOpportunities, repoFullName, primaryFilePath);
-    const repoIsArchived = matchingOpportunity?.repo.isArchived ?? false;
-    const repoStars = matchingOpportunity?.repo.stars ?? 0;
-    const eligibleCheck = checkRepoEligibility(repoIsArchived, repoStars);
+    const matchingRepo = state.repositories.find((r) => r.fullName === repoFullName);
+    const repoStars = matchingRepo?.stars ?? 0;
+    const eligibleCheck = checkRepoEligibility(false, repoStars);
     if (!eligibleCheck.passed) {
       throw new Error(`Cannot submit: ${eligibleCheck.reason}`);
-    }
-
-    if (options.dryRun) {
-      const prTitle = `fix(#${issue.number}): ${shortDescription(issue.title)}`;
-      const opportunity = findMatchingOpportunity(contributionOpportunities, repoFullName, primaryFilePath);
-      const prBody = createPRBody(issue.number, fix, opportunity);
-      process.stdout.write("\n=== PR Preview (dry-run) ===\n");
-      process.stdout.write(`Title: ${prTitle}\n`);
-      process.stdout.write(`Body:\n${prBody}\n`);
-      process.stdout.write("=============================\n");
-      return 0;
     }
 
     const branchName = `gittributor/fix-${issue.number}`;
@@ -454,8 +383,7 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
     await runCommand(["git", "-C", workspacePath, "push", "origin", branchName]);
 
     const prTitle = commitTitle;
-    const opportunity = findMatchingOpportunity(contributionOpportunities, repoFullName, primaryFilePath);
-    const prBody = createPRBody(issue.number, fix, opportunity);
+    const prBody = createPRBody(issue.number, fix);
     const prOutput = await runCommand([
       "gh",
       "pr",

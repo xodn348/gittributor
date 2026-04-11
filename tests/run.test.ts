@@ -89,7 +89,7 @@ const makeDeps = (overrides: Partial<RunDependencies> = {}): RunDependencies => 
   discoverRepos: async () => [],
   analyzeCodebase: async () => mockAnalysisResult(),
   generateFix: async () => mockFixResult(),
-  reviewContributions: async () => 0,
+  reviewFix: async () => 0,
   submitApprovedFix: async () => 0,
   showHistoryStats: async () => {},
   ...overrides,
@@ -172,7 +172,7 @@ describe("run command V2 pipeline", () => {
           order.push("fix");
           return mockFixResult();
         },
-        reviewContributions: async () => {
+        reviewFix: async () => {
           order.push("review");
           return 0;
         },
@@ -187,19 +187,20 @@ describe("run command V2 pipeline", () => {
       expect(order).toEqual(["discover", "analyze", "fix", "review", "submit"]);
     });
 
-    it("calls analyze in --dry-run mode but skips fix/review/submit", async () => {
+    it("calls analyze and review (auto-approved) in --dry-run mode but skips fix/submit", async () => {
       const { runOrchestrator } = await import("../src/commands/run.js");
 
       let analyzeCalled = false;
       let fixCalled = false;
       let reviewCalled = false;
+      let reviewAutoApprove: boolean | undefined;
       let submitCalled = false;
 
       const deps = makeDeps({
         discoverRepos: async () => [mockTrendingRepo()],
         analyzeCodebase: async () => { analyzeCalled = true; return mockAnalysisResult(); },
         generateFix: async () => { fixCalled = true; return mockFixResult(); },
-        reviewContributions: async () => { reviewCalled = true; return 0; },
+        reviewFix: async (opts) => { reviewCalled = true; reviewAutoApprove = opts?.autoApprove; return 0; },
         submitApprovedFix: async () => { submitCalled = true; return 0; },
       });
 
@@ -208,7 +209,8 @@ describe("run command V2 pipeline", () => {
       expect(exitCode).toBe(0);
       expect(analyzeCalled).toBe(true);
       expect(fixCalled).toBe(false);
-      expect(reviewCalled).toBe(false);
+      expect(reviewCalled).toBe(true);
+      expect(reviewAutoApprove).toBe(true);
       expect(submitCalled).toBe(false);
     });
 
@@ -239,7 +241,7 @@ describe("run command V2 pipeline", () => {
       const deps = makeDeps({
         discoverRepos: async () => [],
         generateFix: async () => { fixCalled = true; return mockFixResult(); },
-        reviewContributions: async () => { reviewCalled = true; return 0; },
+        reviewFix: async () => { reviewCalled = true; return 0; },
         submitApprovedFix: async () => { submitCalled = true; return 0; },
       });
 
@@ -267,25 +269,25 @@ describe("run command V2 pipeline", () => {
       expect(analyzeCalled).toBe(false);
     });
 
-    it("passes typeFilter to review when --type flag is provided", async () => {
+    it("passes autoApprove to review in dry-run mode", async () => {
       const { runOrchestrator } = await import("../src/commands/run.js");
 
-      let passedTypeFilter: string | undefined = undefined;
+      let passedAutoApprove: boolean | undefined = undefined;
 
       const deps = makeDeps({
         discoverRepos: async () => [mockTrendingRepo()],
         analyzeCodebase: async () => mockAnalysisResult(),
         generateFix: async () => mockFixResult(),
-        reviewContributions: async (opts: { typeFilter?: string }) => {
-          passedTypeFilter = opts.typeFilter;
+        reviewFix: async (opts) => {
+          passedAutoApprove = opts?.autoApprove;
           return 0;
         },
         submitApprovedFix: async () => 0,
       });
 
-      await runOrchestrator({ type: "typo" }, deps);
+      await runOrchestrator({ dryRun: true }, deps);
 
-      expect(String(passedTypeFilter)).toBe("typo");
+      expect(passedAutoApprove ?? false).toBe(true);
     });
   });
 
@@ -305,7 +307,7 @@ describe("run command V2 pipeline", () => {
           return mockAnalysisResult({ repoFullName: repo.fullName });
         },
         generateFix: async () => mockFixResult(),
-        reviewContributions: async () => 0,
+        reviewFix: async () => 0,
         submitApprovedFix: async () => 0,
       });
 
@@ -325,7 +327,7 @@ describe("run command V2 pipeline", () => {
         discoverRepos: async () => [mockTrendingRepo()],
         analyzeCodebase: async () => mockAnalysisResult(),
         generateFix: async () => { fixCallCount++; return mockFixResult(); },
-        reviewContributions: async () => 0,
+        reviewFix: async () => 0,
         submitApprovedFix: async () => 0,
       });
 

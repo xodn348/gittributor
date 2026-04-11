@@ -15,7 +15,6 @@ import type {
   ContributionType,
   TrendingRepo,
   MergeProbability,
-  ContributionOpportunity,
   ContributionHistory,
   GuardrailCheck,
   Config,
@@ -553,82 +552,6 @@ describe("V2 Type System", () => {
         reasons: ["rarely updated repo"],
       };
       expect(low.label).toBe("low");
-    });
-  });
-
-  describe("ContributionOpportunity", () => {
-    test("matches expected shape for docs contribution", () => {
-      const repo: TrendingRepo = {
-        owner: "owner",
-        name: "name",
-        fullName: "owner/name",
-        stars: 5000,
-        language: "JavaScript",
-        description: "A test repo",
-        isArchived: false,
-        defaultBranch: "main",
-        hasContributing: true,
-        topics: [],
-        openIssues: 10,
-      };
-
-      const opportunity: ContributionOpportunity = {
-        repo,
-        type: "docs",
-        filePath: "README.md",
-        description: "Fix typos in README",
-        original: "teh",
-        replacement: "the",
-        mergeProbability: {
-          score: 90,
-          label: "high",
-          reasons: ["documentation fix"],
-        },
-        detectedAt: "2026-04-08T12:00:00Z",
-      };
-
-      expect(opportunity.type).toBe("docs");
-      expect(opportunity.filePath).toBe("README.md");
-      expect(opportunity.original).toBe("teh");
-      expect(opportunity.replacement).toBe("the");
-      expect(opportunity.mergeProbability.label).toBe("high");
-    });
-
-    test("matches expected shape for deps contribution", () => {
-      const repo: TrendingRepo = {
-        owner: "owner",
-        name: "name",
-        fullName: "owner/name",
-        stars: 5000,
-        language: "JavaScript",
-        description: "A test repo",
-        isArchived: false,
-        defaultBranch: "main",
-        hasContributing: true,
-        topics: [],
-        openIssues: 10,
-      };
-
-      const opportunity: ContributionOpportunity = {
-        repo,
-        type: "deps",
-        filePath: "package.json",
-        description: "Update dependency",
-        packageName: "lodash",
-        oldVersion: "4.17.20",
-        newVersion: "4.17.21",
-        mergeProbability: {
-          score: 95,
-          label: "high",
-          reasons: ["security update"],
-        },
-        detectedAt: "2026-04-08T12:00:00Z",
-      };
-
-      expect(opportunity.type).toBe("deps");
-      expect(opportunity.packageName).toBe("lodash");
-      expect(opportunity.oldVersion).toBe("4.17.20");
-      expect(opportunity.newVersion).toBe("4.17.21");
     });
   });
 

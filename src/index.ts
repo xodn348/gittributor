@@ -46,7 +46,7 @@ interface ParsedGlobalArgs {
   commandArgs: string[];
 }
 
-type SupportedCommand = "analyze" | "discover" | "fix" | "help" | "review" | "submit" | "run";
+type SupportedCommand = "discover" | "fix" | "help" | "review" | "submit" | "run";
 
 interface ConfigOverrides {
   aiProvider?: "anthropic" | "openai";
@@ -137,7 +137,6 @@ const validateCommandShape = (commandArgs: string[]): void => {
 
   const allowedFlagPrefixesByCommand: Record<SupportedCommand, string[]> = {
     help: [],
-    analyze: [],
     fix: [],
     review: [],
     submit: [],
@@ -630,19 +629,6 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
   switch (parsedArgs.command) {
     case "discover":
       return runDiscoverCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs);
-    case "analyze":
-      {
-        const repos = await runDiscoverCmd({});
-        const { analyzeRepositories } = await import("./commands/analyze.js");
-        const { setStateData } = await import("./lib/state.js");
-        const opportunities = await analyzeRepositories(repos);
-        await setStateData("contributionOpportunities", opportunities);
-        if (opportunities.length === 0) {
-          writeErrorLine(output, "No contribution opportunities found.");
-          return 1;
-        }
-        return 0;
-      }
     case "fix":
       await (runtimeConfig ?? resolveRuntimeConfig(globalFlags));
       return runFixCommand();
@@ -656,6 +642,9 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
         const flags = parseRunFlags(commandArgs);
         return runOrchestrator(flags);
       }
+    default:
+      writeErrorLine(output, `Unknown command: ${parsedArgs.command}`);
+      return 1;
   }
 };
 

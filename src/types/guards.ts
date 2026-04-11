@@ -2,7 +2,6 @@ import type {
   AnalysisResult,
   CommandName,
   Config,
-  ContributionOpportunity,
   ContributionType,
   FixResult,
   GuardrailCheck,
@@ -219,19 +218,6 @@ export const isMergeProbability = (value: unknown): value is MergeProbability =>
     typeof value.score === "number" &&
     (value.label === "high" || value.label === "medium" || value.label === "low") &&
     isStringArray(value.reasons)
-  );
-};
-
-export const isContributionOpportunity = (value: unknown): value is ContributionOpportunity => {
-  if (!isRecord(value)) return false;
-
-  return (
-    isTrendingRepo(value.repo) &&
-    isContributionType(value.type) &&
-    typeof value.filePath === "string" &&
-    typeof value.description === "string" &&
-    isMergeProbability(value.mergeProbability) &&
-    typeof value.detectedAt === "string"
   );
 };
 
