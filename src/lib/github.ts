@@ -357,3 +357,198 @@ export class GitHubClient {
     }
   }
 }
+
+export const forkRepoWithToken = async (token: string, repoFullName: string): Promise<string> => {
+  const proc = Bun.spawn({
+    cmd: ["gh", "api", "-X", "POST", `-H`, `Authorization: token ${token}`, `repos/${repoFullName}/forks`],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    if (stderr.includes("403") || stderr.toLowerCase().includes("rate limit")) {
+      throw new GitHubAPIError(`[RATE LIMIT] GitHub rate limit hit for ${repoFullName}. Skipping.`, 1);
+    }
+    throw new GitHubAPIError(`forkRepo failed: ${stderr}`, exitCode);
+  }
+
+  try {
+    const data = JSON.parse(stdout);
+    return data.clone_url || data.html_url;
+  } catch {
+    throw new GitHubAPIError("forkRepo returned invalid JSON");
+  }
+};
+
+export const createBranchWithToken = async (
+  token: string,
+  repoFullName: string,
+  branchName: string,
+  baseBranch: string,
+): Promise<void> => {
+  const refProc = Bun.spawn({
+    cmd: ["gh", "api", `-H`, `Authorization: token ${token}`, `repos/${repoFullName}/git/ref/heads/${baseBranch}`],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [refStdout, refStderr, refExit] = await Promise.all([
+    new Response(refProc.stdout).text(),
+    new Response(refProc.stderr).text(),
+    refProc.exited,
+  ]);
+
+  if (refExit !== 0) {
+    if (refStderr.includes("403") || refStderr.toLowerCase().includes("rate limit")) {
+      throw new GitHubAPIError(`[RATE LIMIT] GitHub rate limit hit for ${repoFullName}. Skipping.`, 1);
+    }
+    throw new GitHubAPIError(`createBranch (get ref) failed: ${refStderr}`, refExit);
+  }
+
+  let sha: string;
+  try {
+    const refData = JSON.parse(refStdout);
+    sha = refData.object.sha;
+  } catch {
+    throw new GitHubAPIError("createBranch: could not parse ref response");
+  }
+
+  const createProc = Bun.spawn({
+    cmd: [
+      "gh", "api", "-X", "POST", `-H`, `Authorization: token ${token}`, `-H`, "Content-Type: application/json",
+      `repos/${repoFullName}/git/refs`,
+      "-d", JSON.stringify({ ref: `refs/heads/${branchName}`, sha }),
+    ],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [createStdout, createStderr, createExit] = await Promise.all([
+    new Response(createProc.stdout).text(),
+    new Response(createProc.stderr).text(),
+    createProc.exited,
+  ]);
+
+  if (createExit !== 0) {
+    if (createStderr.includes("403") || createStderr.toLowerCase().includes("rate limit")) {
+      throw new GitHubAPIError(`[RATE LIMIT] GitHub rate limit hit for ${repoFullName}. Skipping.`, 1);
+    }
+    throw new GitHubAPIError(`createBranch failed: ${createStderr}`, createExit);
+  }
+};
+
+export const commitFilesWithToken = async (
+  token: string,
+  repoFullName: string,
+  branchName: string,
+  files: Array<{ path: string; content: string; message: string }>,
+): Promise<void> => {
+  for (const file of files) {
+    const encodedPath = encodeURIComponent(file.path);
+    const getProc = Bun.spawn({
+      cmd: ["gh", "api", `-H`, `Authorization: token ${token}`, `repos/${repoFullName}/contents/${encodedPath}?ref=${branchName}`],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [, getStderr, getExit] = await Promise.all([
+      new Response(getProc.stdout).text(),
+      new Response(getProc.stderr).text(),
+      getProc.exited,
+    ]);
+
+    let sha: string | undefined;
+    if (getExit === 0) {
+      try {
+        const existing = JSON.parse(await new Response(getProc.stdout).text());
+        sha = existing.sha;
+      } catch {
+        sha = undefined;
+      }
+    }
+
+    const body: Record<string, unknown> = {
+      message: file.message,
+      content: Buffer.from(file.content).toString("base64"),
+      branch: branchName,
+    };
+    if (sha) {
+      body.sha = sha;
+    }
+
+    const putProc = Bun.spawn({
+      cmd: [
+        "gh", "api", "-X", "PUT", `-H`, `Authorization: token ${token}`, `-H`, "Content-Type: application/json",
+        `repos/${repoFullName}/contents/${encodedPath}`,
+        "-d", JSON.stringify(body),
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [, putStderr, putExit] = await Promise.all([
+      new Response(putProc.stdout).text(),
+      new Response(putProc.stderr).text(),
+      putProc.exited,
+    ]);
+
+    if (putExit !== 0) {
+      if (putStderr.includes("403") || putStderr.toLowerCase().includes("rate limit")) {
+        throw new GitHubAPIError(`[RATE LIMIT] GitHub rate limit hit for ${repoFullName}. Skipping.`, 1);
+      }
+      throw new GitHubAPIError(`commitFiles failed for ${file.path}: ${putStderr}`, putExit);
+    }
+  }
+};
+
+export const createPullRequestWithToken = async (
+  token: string,
+  opts: {
+    upstreamRepo: string;
+    head: string;
+    title: string;
+    body: string;
+  },
+): Promise<PRSubmission> => {
+  const proc = Bun.spawn({
+    cmd: [
+      "gh", "api", "-X", "POST", `-H`, `Authorization: token ${token}`, `-H`, "Content-Type: application/json",
+      `repos/${opts.upstreamRepo}/pulls`,
+      "-d", JSON.stringify({
+        title: opts.title,
+        body: opts.body,
+        head: opts.head,
+        base: "main",
+      }),
+    ],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    if (stderr.includes("403") || stderr.toLowerCase().includes("rate limit")) {
+      throw new GitHubAPIError(`[RATE LIMIT] GitHub rate limit hit for ${opts.upstreamRepo}. Skipping.`, 1);
+    }
+    throw new GitHubAPIError(`createPullRequest failed: ${stderr}`, exitCode);
+  }
+
+  try {
+    const data = JSON.parse(stdout);
+    return {
+      issueId: 0,
+      repoFullName: opts.upstreamRepo,
+      prUrl: data.html_url,
+      prNumber: data.number,
+      branchName: opts.head,
+      submittedAt: new Date().toISOString(),
+    };
+  } catch {
+    throw new GitHubAPIError("createPullRequest returned invalid JSON");
+  }
+};

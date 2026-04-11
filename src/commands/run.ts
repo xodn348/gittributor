@@ -1,9 +1,12 @@
 import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { getHistoryStats } from "../lib/history.js";
 import { setStateData, saveState, loadState, resetState } from "../lib/state.js";
-import { debug, error as logError } from "../lib/logger.js";
+import { debug, error as logError, warn } from "../lib/logger.js";
 import { loadConfig, getTargetLanguages } from "../lib/config.js";
 import { getGlobalWeeklyCount, MAX_GLOBAL_WEEKLY } from "../lib/guardrails.js";
+import { forkRepoWithToken, createBranchWithToken, commitFilesWithToken, createPullRequestWithToken, GitHubAPIError } from "../lib/github.js";
 import type { AnalysisResult, Config, ContributionType, Issue, Repository, TrendingRepo } from "../types/index.js";
 import type { FixResult as GeneratedFixResult } from "../lib/fix-generator.js";
 
@@ -29,6 +32,192 @@ export interface RunDependencies {
 interface WritableLike {
   write: (chunk: string) => boolean;
 }
+
+interface FixChange {
+  file: string;
+  original: string;
+  modified: string;
+}
+
+interface PersistedFixPayload {
+  changes: FixChange[];
+  explanation: string;
+}
+
+const shortDescription = (text: string): string => {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "apply approved fix";
+  }
+  return normalized.length > 72 ? `${normalized.slice(0, 69)}...` : normalized;
+};
+
+const slugify = (text: string): string => {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+};
+
+const extractRepoOwner = (repoUrl: string): string => {
+  const match = repoUrl.match(/^https:\/\/github\.com\/([^/]+)\/[^/\s]+\/?$/);
+  if (!match) {
+    throw new Error(`Unexpected fork URL format: ${repoUrl}`);
+  }
+  return match[1];
+};
+
+const extractGitHubUrl = (payload: string): string => {
+  const urlMatch = payload.match(/https:\/\/github\.com\/\S+/);
+  if (!urlMatch) {
+    throw new Error("Fork did not return a GitHub URL");
+  }
+  return urlMatch[0].trim();
+};
+
+const loadPersistedFixPayload = async (): Promise<PersistedFixPayload> => {
+  const filePath = join(process.cwd(), ".gittributor", "fix.json");
+  const content = await Bun.file(filePath).json();
+  const record = content as Record<string, unknown>;
+  const changes = Array.isArray(record.changes)
+    ? record.changes
+        .map((entry) => {
+          if (typeof entry !== "object" || entry === null) {
+            return null;
+          }
+          const change = entry as Record<string, unknown>;
+          if (
+            typeof change.file !== "string" ||
+            typeof change.original !== "string" ||
+            typeof change.modified !== "string"
+          ) {
+            return null;
+          }
+          return { file: change.file, original: change.original, modified: change.modified };
+        })
+        .filter((entry): entry is FixChange => entry !== null)
+    : [];
+  return { changes, explanation: typeof record.explanation === "string" ? record.explanation : "" };
+};
+
+const countLinesChanged = (original: string, modified: string): number => {
+  const originalLines = original.split("\n").length;
+  const modifiedLines = modified.split("\n").length;
+  return Math.abs(modifiedLines - originalLines) + Math.min(originalLines, modifiedLines);
+};
+
+const isDryRun = (): boolean => {
+  return Bun.env.GITTRIBUTOR_DRY_RUN === "true";
+};
+
+const getGitHubToken = (): string | undefined => {
+  return Bun.env.GITHUB_TOKEN?.trim();
+};
+
+const submitPRForResult = async (
+  result: GeneratedFixResult,
+  syntheticIssue: Issue,
+  repoFullName: string,
+  analysis: AnalysisResult,
+): Promise<boolean> => {
+  const dryRun = isDryRun();
+  const token = getGitHubToken();
+
+  if (!token) {
+    warn("GITHUB_TOKEN not set. Skipping PR submission.");
+    return false;
+  }
+
+  const fixPayload = await loadPersistedFixPayload();
+  const fileCount = fixPayload.changes.length;
+  const totalLinesChanged = fixPayload.changes.reduce(
+    (acc, change) => acc + countLinesChanged(change.original, change.modified),
+    0,
+  );
+
+  if (fileCount > 5 || totalLinesChanged > 200) {
+    process.stdout.write(`[SKIP] Fix too large for automated PR (${fileCount} files, ${totalLinesChanged} LOC). Skipping submission.\n`);
+    return false;
+  }
+
+  const isSynthetic = syntheticIssue.number === 0;
+  const branchName = isSynthetic
+    ? `gittributor/fix-${slugify(syntheticIssue.title || syntheticIssue.body?.slice(0, 30) || "issue")}`
+    : `gittributor/fix-${syntheticIssue.number}`;
+
+  const prTitle = isSynthetic
+    ? shortDescription(analysis.suggestedApproach)
+    : `fix(#${syntheticIssue.number}): ${shortDescription(syntheticIssue.title)}`;
+
+  const changedFiles = fixPayload.changes.map((c) => `- \`${c.file}\``).join("\n");
+  const prBodyLines = [
+    "## Summary",
+    shortDescription(fixPayload.explanation),
+    "",
+    "## Changes",
+    changedFiles,
+  ];
+  if (!isSynthetic && syntheticIssue.number > 0) {
+    prBodyLines.push("");
+    prBodyLines.push(`Fixes #${syntheticIssue.number}`);
+  }
+
+  const prBody = prBodyLines.join("\n");
+
+  if (dryRun) {
+    process.stdout.write(`[DRY RUN] Would create PR: ${prTitle} on ${repoFullName}\n`);
+    process.stdout.write(`[DRY RUN] Files: ${fixPayload.changes.map((c) => c.file).join(", ")}\n`);
+    return true;
+  }
+
+  try {
+    const forkOutput = await runCommand(["gh", "repo", "fork", repoFullName, "--clone=false"]);
+    const forkUrl = extractGitHubUrl(forkOutput);
+    const forkOwner = extractRepoOwner(forkUrl);
+
+    await createBranchWithToken(token, forkUrl.replace("https://github.com/", ""), branchName, "main");
+
+    const commitMessage = `fix: ${shortDescription(syntheticIssue.title || fixPayload.explanation)}`;
+    const files = fixPayload.changes.map((change) => ({
+      path: change.file,
+      content: change.modified,
+      message: commitMessage,
+    }));
+    await commitFilesWithToken(token, forkUrl.replace("https://github.com/", ""), branchName, files);
+
+    await createPullRequestWithToken(token, {
+      upstreamRepo: repoFullName,
+      head: `${forkOwner}:${branchName}`,
+      title: prTitle,
+      body: prBody,
+    });
+
+    process.stdout.write(`Submitted PR: ${prTitle}\n`);
+    return true;
+  } catch (err) {
+    if (err instanceof GitHubAPIError && err.message.includes("[RATE LIMIT]")) {
+      process.stdout.write(`${err.message}\n`);
+      return false;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    warn(`PR submission failed for ${repoFullName}: ${msg}`);
+    return false;
+  }
+};
+
+const runCommand = async (cmd: string[]): Promise<string> => {
+  const proc = Bun.spawn({ cmd, stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(`Command failed: ${cmd.join(" ")} (exit ${exitCode}) ${stderr.trim()}`);
+  }
+  return stdout;
+};
 
 export async function showHistoryStats(
   historyPath: string,
@@ -268,6 +457,44 @@ export async function runOrchestrator(
 
       printStage("📤", "Submitting contribution...");
       const submitResult = await submit();
+
+      if (isDryRun()) {
+        process.stdout.write("\n=== PR Submission (Dry Run) ===\n");
+        for (let j = 0; j < results.length; j++) {
+          const fixResult = results[j];
+          const tr = eligibleRepos[j];
+          const syntheticIssue: Issue = {
+            id: 0,
+            number: 0,
+            title: "Free-form analysis",
+            body: analyses[j]?.suggestedApproach || "",
+            url: `https://github.com/${tr.fullName}`,
+            repoFullName: tr.fullName,
+            labels: [],
+            createdAt: new Date().toISOString(),
+            assignees: [],
+          };
+          await submitPRForResult(fixResult, syntheticIssue, tr.fullName, analyses[j]);
+        }
+        process.stdout.write("==============================\n");
+      } else {
+        for (let j = 0; j < results.length; j++) {
+          const fixResult = results[j];
+          const tr = eligibleRepos[j];
+          const syntheticIssue: Issue = {
+            id: 0,
+            number: 0,
+            title: "Free-form analysis",
+            body: analyses[j]?.suggestedApproach || "",
+            url: `https://github.com/${tr.fullName}`,
+            repoFullName: tr.fullName,
+            labels: [],
+            createdAt: new Date().toISOString(),
+            assignees: [],
+          };
+          await submitPRForResult(fixResult, syntheticIssue, tr.fullName, analyses[j]);
+        }
+      }
       lastSubmitResult = submitResult;
 
       if (submitResult === 0) {
