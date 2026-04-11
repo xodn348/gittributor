@@ -1,0 +1,30 @@
+$ bun run src/index.ts run
+[language 1/3] Processing: typescript
+[36m[1m[INFO][0m Pipeline state saved (idle).
+🔍 Discovering repos...
+[36m[1m[INFO][0m Loaded 30 curated repos from YAML
+[36m[1m[INFO][0m Filtered curated repos to 6 by language/minStars
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+No repositories found matching criteria.
+No repositories found.
+✅ Pipeline complete for typescript.
+[language 2/3] Processing: javascript
+[36m[1m[INFO][0m Pipeline state saved (idle).
+🔍 Discovering repos...
+[36m[1m[INFO][0m Loaded 30 curated repos from YAML
+[36m[1m[INFO][0m Filtered curated repos to 10 by language/minStars
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+No repositories found matching criteria.
+No repositories found.
+✅ Pipeline complete for javascript.
+[language 3/3] Processing: python
+[36m[1m[INFO][0m Pipeline state saved (idle).
+🔍 Discovering repos...
+[36m[1m[INFO][0m Loaded 30 curated repos from YAML
+[36m[1m[INFO][0m Filtered curated repos to 4 by language/minStars
+[36m[1m[INFO][0m Pipeline state saved (idle).
+[36m[1m[INFO][0m Pipeline state saved (idle).
+No repositories found matching criteria.
+No repositories found.

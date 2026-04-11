@@ -249,3 +249,30 @@ export function getTargetLanguages(config: Config, overrideLanguage?: string): s
   }
   return [...config.targetLanguages];
 }
+
+const parsePositiveIntegerEnv = (name: string, fallback: number): number => {
+  const raw = Bun.env[name]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  return isNaN(parsed) || parsed < 0 ? fallback : parsed;
+};
+
+const parseBooleanEnv = (name: string, fallback: boolean): boolean => {
+  const raw = Bun.env[name]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+  return raw === "true" || raw === "1";
+};
+
+export const discoveryConfig = {
+  minStars: parsePositiveIntegerEnv("GITTRIBUTOR_DISCOVERY_MIN_STARS", 1000),
+  maxStars: parsePositiveIntegerEnv("GITTRIBUTOR_DISCOVERY_MAX_STARS", 10000),
+  staticAnalysisEnabled: parseBooleanEnv("GITTRIBUTOR_STATIC_ANALYSIS_ENABLED", true),
+  issueLabels: Bun.env.GITTRIBUTOR_ISSUE_LABELS?.trim() || "good first issue,bug,help wanted",
+  maxReposPerRun: parsePositiveIntegerEnv("GITTRIBUTOR_MAX_REPOS_PER_RUN", 5),
+} as const;
+
+export type DiscoveryConfig = typeof discoveryConfig;
