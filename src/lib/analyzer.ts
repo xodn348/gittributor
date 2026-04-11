@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { callModel } from "./ai";
 import { GitHubAPIError, GittributorError } from "./errors";
-import { warn } from "./logger";
+import { debug, warn } from "./logger";
 import type { AnalysisResult, Issue, Repository } from "../types/index";
 
 interface ParsedAnalysisPayload {
@@ -321,6 +321,7 @@ async function requestAnalysis(
   repoPath: string,
   selectedFiles: string[],
 ): Promise<AnalysisResult> {
+  debug(`[analyzer] requestAnalysis: repo=${repo.fullName}, files=${selectedFiles.length}`);
   const systemPrompt = issue
     ? ANALYZER_SYSTEM_PROMPT
     : "You are discovering bugs, security issues, type errors, and logic errors in a codebase. Identify actionable issues and suggest which files need changes.";
@@ -335,6 +336,7 @@ async function requestAnalysis(
     maxTokens: ANALYZER_MAX_TOKENS,
   });
   const parsedAnalysis = parseAnalysisPayload(responseText);
+  debug(`[analyzer] requestAnalysis: repo=${repo.fullName}, confidence=${parsedAnalysis.confidence}`);
   const normalizedRelevantFiles = normalizeRelevantFiles(selectedFiles, parsedAnalysis.affectedFiles);
 
   return {

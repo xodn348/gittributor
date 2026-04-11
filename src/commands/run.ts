@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { getHistoryStats } from "../lib/history.js";
 import { setStateData, saveState, loadState, resetState } from "../lib/state.js";
-import { error as logError } from "../lib/logger.js";
+import { debug, error as logError } from "../lib/logger.js";
 import { loadConfig, getTargetLanguages } from "../lib/config.js";
 import { getGlobalWeeklyCount, MAX_GLOBAL_WEEKLY } from "../lib/guardrails.js";
 import type { AnalysisResult, Config, ContributionType, Issue, Repository, TrendingRepo } from "../types/index.js";
@@ -153,6 +153,9 @@ export async function runOrchestrator(
   });
 
   let lastSubmitResult = 0;
+  let totalReposAnalyzed = 0;
+  let totalIssuesFound = 0;
+  let totalFixesGenerated = 0;
 
   for (let i = 0; i < languages.length; i++) {
     const language = languages[i];
@@ -192,9 +195,17 @@ export async function runOrchestrator(
           updatedAt: new Date().toISOString(),
           description: tr.description,
         };
-        const analysis = await analyzeCodebase(repo);
-        analyses.push(analysis);
-        process.stdout.write("    Analysis: " + (analysis.suggestedApproach.slice(0, 80)) + "...\n");
+        try {
+          const analysis = await analyzeCodebase(repo);
+          analyses.push(analysis);
+          totalReposAnalyzed++;
+          totalIssuesFound++;
+          process.stdout.write("    Analysis: " + (analysis.suggestedApproach.slice(0, 80)) + "...\n");
+        } catch (err) {
+          logError(`Error analyzing ${tr.fullName}: ${err instanceof Error ? err.message : String(err)}`);
+          debug(`[run] Skipping ${tr.fullName} due to analysis error`);
+          continue;
+        }
       }
       if (analyses.length === 0) {
         process.stdout.write("No repositories could be analyzed.\n");
@@ -240,9 +251,16 @@ export async function runOrchestrator(
           createdAt: new Date().toISOString(),
           assignees: [],
         };
-        const fixResult = await generateFix(analysis, syntheticIssue, repo);
-        results.push(fixResult);
-        process.stdout.write("    Fix: " + (fixResult.explanation.slice(0, 80)) + "...\n");
+        try {
+          const fixResult = await generateFix(analysis, syntheticIssue, repo);
+          results.push(fixResult);
+          totalFixesGenerated++;
+          process.stdout.write("    Fix: " + (fixResult.explanation.slice(0, 80)) + "...\n");
+        } catch (err) {
+          logError(`Error generating fix for ${tr.fullName}: ${err instanceof Error ? err.message : String(err)}`);
+          debug(`[run] Skipping ${tr.fullName} due to fix generation error`);
+          continue;
+        }
       }
 
       printStage("👀", "Reviewing contributions...");
@@ -263,6 +281,8 @@ export async function runOrchestrator(
     }
   }
 
-  process.stdout.write(`=== Run complete: processed ${languages.length} language(s) ===\n`);
+  process.stdout.write(
+    `Pipeline Summary: Analyzed ${totalReposAnalyzed} repos, found ${totalIssuesFound} issues, generated ${totalFixesGenerated} fixes\n`,
+  );
   return lastSubmitResult;
 }
