@@ -129,7 +129,7 @@ export interface Config {
 
 export type ReviewDecision = "approve" | "reject";
 
-export type ContributionType = "typo" | "docs" | "deps" | "test" | "code";
+export type ContributionType = "typo" | "docs" | "deps" | "test" | "code" | "bug-fix" | "performance" | "type-safety" | "logic-error" | "static-analysis";
 
 export interface GuardrailCheck {
   passed: boolean;
@@ -180,4 +180,41 @@ export interface ComplianceResult {
   requiresIssueFirst: boolean;
   hasPRTemplate: boolean;
   prTemplateContent: string | null;
+}
+
+export interface StaticAnalysisResult {
+  patternType: string;
+  riskScore: number;
+  phase: 1 | 2;
+}
+
+export function toTrendingRepo(repo: Repository): TrendingRepo {
+  const [owner, name] = repo.fullName.split("/");
+  return {
+    owner,
+    name,
+    fullName: repo.fullName,
+    stars: repo.stars,
+    language: repo.language,
+    description: repo.description,
+    isArchived: false,
+    defaultBranch: "main",
+    hasContributing: false,
+    topics: [],
+    openIssues: repo.openIssuesCount,
+  };
+}
+
+export function toRepository(repo: TrendingRepo): Repository {
+  return {
+    id: 0,
+    name: repo.name,
+    fullName: repo.fullName,
+    url: `https://github.com/${repo.fullName}`,
+    stars: repo.stars,
+    language: repo.language,
+    openIssuesCount: repo.openIssues,
+    updatedAt: new Date().toISOString(),
+    description: repo.description,
+  };
 }
