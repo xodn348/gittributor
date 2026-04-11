@@ -5,7 +5,8 @@ import { loadConfig } from "../lib/config.js";
 import { checkRateLimit, checkDuplicateContribution, checkRepoEligibility, recordSubmission } from "../lib/guardrails.js";
 import { saveContribution } from "../lib/history.js";
 import { checkContributingCompliance } from "../lib/contributing-checker.js";
-import { error as logError, warn } from "../lib/logger.js";
+import { error as logError, warn, debug } from "../lib/logger.js";
+import { GitHubAPIError } from "../lib/errors.js";
 import type { FixResult, PRSubmission, PipelineState, PipelineStatus, ContributionType } from "../types/index.js";
 
 const WORKSPACE_ROOT = ".gittributor/workspace";
@@ -13,6 +14,11 @@ const AI_DISCLOSURE =
   process.env.GITTRIBUTOR_AI_PROVIDER === "openai"
     ? "This fix was generated with AI assistance (OpenAI) and reviewed by a human."
     : "This fix was generated with AI assistance (Anthropic Claude) and reviewed by a human.";
+
+const MAX_PR_FILES = 5;
+const MAX_PR_LINES = 200;
+
+const isEnvDryRun = (): boolean => Bun.env.GITTRIBUTOR_DRY_RUN === "true";
 
 export interface SubmitOptions {
   rateLimitsPath?: string;
@@ -89,6 +95,33 @@ const shortDescription = (text: string): string => {
   }
 
   return normalized.length > 72 ? `${normalized.slice(0, 69)}...` : normalized;
+};
+
+const countLinesChanged = (original: string, modified: string): number => {
+  const originalLines = original.split("\n").length;
+  const modifiedLines = modified.split("\n").length;
+  return Math.abs(modifiedLines - originalLines) + (modifiedLines > originalLines ? modifiedLines - originalLines : 0);
+};
+
+const checkFixSize = (fix: FixResultWithChanges): { passed: boolean; fileCount: number; lineCount: number } => {
+  const fileCount = fix.changes.length;
+  let totalLineCount = 0;
+  for (const change of fix.changes) {
+    totalLineCount += countLinesChanged(change.original, change.modified);
+  }
+  return {
+    passed: fileCount <= MAX_PR_FILES && totalLineCount <= MAX_PR_LINES,
+    fileCount,
+    lineCount: totalLineCount,
+  };
+};
+
+const isRateLimitError = (error: unknown): boolean => {
+  if (error instanceof GitHubAPIError) {
+    const message = error.message.toLowerCase();
+    return message.includes("http 403") || message.includes("rate limit") || error.exitCode === 1;
+  }
+  return false;
 };
 
 const runCommand = async (cmd: string[]): Promise<string> => {
@@ -322,13 +355,26 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
     const primaryFilePath = fix.changes[0]?.file || "";
     const contributionType: ContributionType = "code";
 
-    if (options.dryRun) {
+    const prSizeCheck = checkFixSize(fix);
+    if (!prSizeCheck.passed) {
+      process.stdout.write(`[SKIP] Fix too large for automated PR (${prSizeCheck.fileCount} files, ${prSizeCheck.lineCount} LOC). Skipping submission.\n`);
+      return 0;
+    }
+
+    const envDryRun = isEnvDryRun();
+    if (options.dryRun || envDryRun) {
       const prTitle = `fix(#${issue.number}): ${shortDescription(issue.title)}`;
       const prBody = createPRBody(issue.number, fix);
-      process.stdout.write("\n=== PR Preview (dry-run) ===\n");
-      process.stdout.write(`Title: ${prTitle}\n`);
-      process.stdout.write(`Body:\n${prBody}\n`);
-      process.stdout.write("=============================\n");
+      const fileList = fix.changes.map((c) => c.file).join(", ");
+      if (envDryRun) {
+        process.stdout.write(`[DRY RUN] Would create PR: ${prTitle} on ${repoFullName}\n`);
+        process.stdout.write(`[DRY RUN] Files: ${fileList}\n`);
+      } else {
+        process.stdout.write("\n=== PR Preview (dry-run) ===\n");
+        process.stdout.write(`Title: ${prTitle}\n`);
+        process.stdout.write(`Body:\n${prBody}\n`);
+        process.stdout.write("=============================\n");
+      }
       return 0;
     }
 
@@ -357,11 +403,29 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
     const branchName = `gittributor/fix-${issue.number}`;
     const workspacePath = join(WORKSPACE_ROOT, repoName);
 
-    const forkOutput = await runCommand(["gh", "repo", "fork", repoFullName, "--clone=false"]);
-    const forkUrl = extractGitHubUrl(forkOutput, "gh repo fork");
-    const forkOwner = extractRepoOwner(forkUrl);
+    let forkOwner: string;
+    let forkUrl: string;
+    try {
+      const forkOutput = await runCommand(["gh", "repo", "fork", repoFullName, "--clone=false"]);
+      forkUrl = extractGitHubUrl(forkOutput, "gh repo fork");
+      forkOwner = extractRepoOwner(forkUrl);
+    } catch (forkError: unknown) {
+      if (isRateLimitError(forkError)) {
+        process.stdout.write(`[RATE LIMIT] GitHub rate limit hit for ${repoFullName}. Skipping.\n`);
+        return 0;
+      }
+      throw forkError;
+    }
 
-    await runCommand(["git", "clone", "--depth=1", forkUrl, workspacePath]);
+    try {
+      await runCommand(["git", "clone", "--depth=1", forkUrl, workspacePath]);
+    } catch (cloneError: unknown) {
+      if (isRateLimitError(cloneError)) {
+        process.stdout.write(`[RATE LIMIT] GitHub rate limit hit for ${repoFullName}. Skipping.\n`);
+        return 0;
+      }
+      throw cloneError;
+    }
 
     const compliance = await checkContributingCompliance(workspacePath);
     if (compliance.hasCLA) {
@@ -380,24 +444,46 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
     const commitTitle = `fix(#${issue.number}): ${shortDescription(issue.title)}`;
     await runCommand(["git", "-C", workspacePath, "add", "."]);
     await runCommand(["git", "-C", workspacePath, "commit", "-m", commitTitle, "-m", AI_DISCLOSURE]);
-    await runCommand(["git", "-C", workspacePath, "push", "origin", branchName]);
+
+    try {
+      await runCommand(["git", "-C", workspacePath, "push", "origin", branchName]);
+    } catch (pushError: unknown) {
+      await rm(workspacePath, { recursive: true, force: true });
+      if (isRateLimitError(pushError)) {
+        process.stdout.write(`[RATE LIMIT] GitHub rate limit hit for ${repoFullName}. Skipping.\n`);
+        return 0;
+      }
+      throw pushError;
+    }
 
     const prTitle = commitTitle;
     const prBody = createPRBody(issue.number, fix);
-    const prOutput = await runCommand([
-      "gh",
-      "pr",
-      "create",
-      "--repo",
-      repoFullName,
-      "--head",
-      `${forkOwner}:${branchName}`,
-      "--title",
-      prTitle,
-      "--body",
-      prBody,
-    ]);
-    const prUrl = extractGitHubUrl(prOutput, "gh pr create");
+
+    let prUrl: string;
+    try {
+      const prOutput = await runCommand([
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        repoFullName,
+        "--head",
+        `${forkOwner}:${branchName}`,
+        "--title",
+        prTitle,
+        "--body",
+        prBody,
+      ]);
+      prUrl = extractGitHubUrl(prOutput, "gh pr create");
+    } catch (prError: unknown) {
+      await rm(workspacePath, { recursive: true, force: true });
+      if (isRateLimitError(prError)) {
+        process.stdout.write(`[RATE LIMIT] GitHub rate limit hit for ${repoFullName}. Skipping.\n`);
+        return 0;
+      }
+      throw prError;
+    }
+
     const submissionRecord = buildSubmissionRecord(issueId, repoFullName, prUrl, branchName);
 
     await saveContribution(

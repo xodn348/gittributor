@@ -342,3 +342,19 @@ No `{} as ContributionOpportunity` or other unsafe type casts remain in the code
 - No `{} as` patterns found anywhere in src/ (Task 7 deletion complete)
 - Tests confirmed: 312 pass, 4 skip, 0 fail
 - Commit includes `return;` in run.ts:65 from previous session fix
+
+## [2026-04-11] Task 9: Logging + Timeout
+
+### Key Implementation Details
+- **`src/lib/ai.ts`**: Wrapped `callModel()` with `Promise.race([aiCall, timeout])` using 30s timeout. Extracted `withTimeout<T>()` helper. Refactored to single `aiCall` variable to avoid duplication.
+- **`src/lib/analyzer.ts`**: Added `debug` import from `./logger`. Added `debug()` calls at start of `requestAnalysis()` (showing repo + file count) and after LLM call (showing repo + confidence score).
+- **`src/commands/run.ts`**: Added `totalReposAnalyzed`, `totalIssuesFound`, `totalFixesGenerated` counters. Wrapped per-repo analysis loop with try/catch (uses `debug()` for errors, stdout "Skipped" message, continues to next). Wrapped per-repo fix generation loop similarly. Pipeline summary at end (after all languages) shows: "Analyzed N repos, found M issues, generated K fixes".
+- Per-repo error isolation: both analysis and fix loops use `debug()` for verbose error logging and `continue` to skip failed repos — run never aborts mid-language due to a single repo failure.
+- `debug()` pattern: imported from `../lib/logger.js` in run.ts (already imported). Added `debug, warn` to analyzer.ts logger import. Using `[run]` and `[analyzer]` prefixes in debug messages for namespacing.
+- Pipeline summary goes to stdout (not debug) since it's user-visible output.
+
+### Test Results
+312 pass, 4 skip, 0 fail — baseline unchanged.
+
+### Commit
+`feat(run): add structured logging, LLM timeout, and graceful per-repo error handling`

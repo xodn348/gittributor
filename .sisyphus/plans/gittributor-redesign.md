@@ -538,7 +538,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: `src/commands/run.ts`, `src/lib/analyzer.ts`
   - Pre-commit: `bun test`
 
-- [ ] 5. Enhanced Issue Discovery + Scoring
+- [x] 5. Enhanced Issue Discovery + Scoring
 
   **What to do**:
   - Extract and enhance `discoverIssues()` from old `analyze.ts` into a standalone module or enhance it in place
@@ -621,7 +621,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: `src/commands/analyze.ts` (or new `src/lib/issue-discovery.ts`)
   - Pre-commit: `bun test`
 
-- [ ] 6. Static Analysis Module (TS/JS + Python)
+- [x] 6. Static Analysis Module (TS/JS + Python)
 
   **What to do**:
   - Create `src/lib/static-analyzer.ts` — AST-free pattern-based static analysis
@@ -706,7 +706,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: `src/lib/static-analyzer.ts` (new)
   - Pre-commit: `bun test`
 
-- [ ] 7. Remove Old Detectors + fix-router + Dead Code
+- [x] 7. Remove Old Detectors + fix-router + Dead Code
 
   **What to do**:
   - Delete `src/lib/detectors/` directory entirely (typo-detector, docs-detector, deps-detector, etc.)
@@ -790,7 +790,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: deleted files + updated imports
   - Pre-commit: `bun test`
 
-- [ ] 8. Fix Existing Bugs — `calculateMergeProbability` crash + silent error swallowing
+- [x] 8. Fix Existing Bugs — `calculateMergeProbability` crash + silent error swallowing
 
   **What to do**:
   - **Bug 1**: `calculateMergeProbability` crash at `analyze.ts:269,288,309,327` — passes `{} as ContributionOpportunity` which crashes on `.type` and `.repo.hasContributing` access. If `calculateMergeProbability` is still used in the new pipeline, fix the empty object. If not used (replaced by `AnalysisResult.confidence`), remove it entirely.
@@ -861,7 +861,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: `src/commands/analyze.ts`, `src/commands/run.ts`
   - Pre-commit: `bun test`
 
-- [ ] 9. Error Handling + Logging Improvements
+- [x] 9. Error Handling + Logging Improvements
 
   **What to do**:
   - Add structured logging to the new pipeline stages:
@@ -943,7 +943,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: `src/commands/run.ts`, `src/lib/analyzer.ts`, `src/lib/ai.ts`
   - Pre-commit: `bun test`
 
-- [ ] 10. Fix Generator Integration — Wire fix-generator.ts with enhanced analyzer output
+- [x] 10. Fix Generator Integration — Wire fix-generator.ts with enhanced analyzer output
 
   **What to do**:
   - Update `fix-generator.ts` to handle new `ContributionType` values (`"bug-fix"`, `"performance"`, `"type-safety"`, `"logic-error"`, `"static-analysis"`)
