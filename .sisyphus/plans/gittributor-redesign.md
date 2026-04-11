@@ -1024,7 +1024,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: `src/lib/fix-generator.ts`
   - Pre-commit: `bun test`
 
-- [ ] 11. PR Submission + Review Pipeline — Wire review and submit phases
+- [x] 11. PR Submission + Review Pipeline — Wire review and submit phases
 
   **What to do**:
   - Update `src/commands/run.ts` to complete the full pipeline: analyze → fix → **create PR**

@@ -10,6 +10,7 @@
   "scripts": {
     "gittributor": "bun run src/index.ts",
     "test": "bun test",
+    "test:e2e": "bun test tests/e2e/",
     "typecheck": "tsc --noEmit",
     "build": "bun build ./src/index.ts --outdir=./dist --target=bun"
   },

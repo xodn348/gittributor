@@ -414,10 +414,23 @@ export async function runOrchestrator(
       }
 
       printStage("🔧", "Generating fixes...");
-      const results: GeneratedFixResult[] = [];
+      interface SuccessfulFix {
+        result: GeneratedFixResult;
+        repo: Repository;
+        analysis: AnalysisResult;
+      }
+      const successfulFixes: SuccessfulFix[] = [];
       for (let i = 0; i < eligibleRepos.length; i++) {
         const tr = eligibleRepos[i];
         const analysis = analyses[i];
+        if (!analysis) {
+          debug(`[run] Skipping ${tr.fullName}: analysis result not available`);
+          continue;
+        }
+        if (!analysis.relevantFiles || analysis.relevantFiles.length === 0) {
+          process.stdout.write(`  Skipping ${tr.fullName}: no relevant files found by analyzer.\n`);
+          continue;
+        }
         const repo: Repository = {
           id: 0,
           name: tr.name,
@@ -442,7 +455,7 @@ export async function runOrchestrator(
         };
         try {
           const fixResult = await generateFix(analysis, syntheticIssue, repo);
-          results.push(fixResult);
+          successfulFixes.push({ result: fixResult, repo, analysis });
           totalFixesGenerated++;
           process.stdout.write("    Fix: " + (fixResult.explanation.slice(0, 80)) + "...\n");
         } catch (err) {
@@ -460,39 +473,35 @@ export async function runOrchestrator(
 
       if (isDryRun()) {
         process.stdout.write("\n=== PR Submission (Dry Run) ===\n");
-        for (let j = 0; j < results.length; j++) {
-          const fixResult = results[j];
-          const tr = eligibleRepos[j];
+        for (const { result: fixResult, repo, analysis } of successfulFixes) {
           const syntheticIssue: Issue = {
             id: 0,
             number: 0,
             title: "Free-form analysis",
-            body: analyses[j]?.suggestedApproach || "",
-            url: `https://github.com/${tr.fullName}`,
-            repoFullName: tr.fullName,
+            body: analysis.suggestedApproach || "",
+            url: `https://github.com/${repo.fullName}`,
+            repoFullName: repo.fullName,
             labels: [],
             createdAt: new Date().toISOString(),
             assignees: [],
           };
-          await submitPRForResult(fixResult, syntheticIssue, tr.fullName, analyses[j]);
+          await submitPRForResult(fixResult, syntheticIssue, repo.fullName, analysis);
         }
         process.stdout.write("==============================\n");
       } else {
-        for (let j = 0; j < results.length; j++) {
-          const fixResult = results[j];
-          const tr = eligibleRepos[j];
+        for (const { result: fixResult, repo, analysis } of successfulFixes) {
           const syntheticIssue: Issue = {
             id: 0,
             number: 0,
             title: "Free-form analysis",
-            body: analyses[j]?.suggestedApproach || "",
-            url: `https://github.com/${tr.fullName}`,
-            repoFullName: tr.fullName,
+            body: analysis.suggestedApproach || "",
+            url: `https://github.com/${repo.fullName}`,
+            repoFullName: repo.fullName,
             labels: [],
             createdAt: new Date().toISOString(),
             assignees: [],
           };
-          await submitPRForResult(fixResult, syntheticIssue, tr.fullName, analyses[j]);
+          await submitPRForResult(fixResult, syntheticIssue, repo.fullName, analysis);
         }
       }
       lastSubmitResult = submitResult;
