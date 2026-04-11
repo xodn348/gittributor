@@ -167,3 +167,31 @@
 ### Notes
 - Bun LSP complains about assignment-in-expression patterns for while loops
 - Solution: Use separate `match = pattern.exec()` call before while loop condition
+
+## [2026-04-11] Task 6: Static Analysis Module (TS/JS + Python)
+
+### Key Implementation Details
+- Created `src/lib/static-analyzer.ts` with regex-based pattern detection (no AST parsers)
+- Pattern detection for TS/JS: empty catch blocks, console.log, any type, unsafe property chains
+- Pattern detection for Python: bare except, mutable default arguments
+- Excludes test files (`.test.ts`, `.spec.ts`, `test_*.py`)
+- Skips files >500 lines with warning log
+- CLI scripts with shebang (`#!/`) excluded from console.log detection
+- Files in `/bin/` directory excluded from console.log detection
+- Risk scoring: NPE/unsafe-chain=1.0, empty-catch/bare-except=0.9, mutable-default=0.8, any-type=0.7, console-log=0.5
+- Files with risk >0.6 marked as high-priority
+- Returns `AnalysisResult` matching `src/types/index.ts` shape exactly
+
+### Test Coverage
+- 18 tests covering all pattern detections, exclusions, edge cases
+- Tests for: empty catch, console.log, any type, unsafe chains, bare except, mutable defaults
+- Tests for: test file exclusion, 500-line skip, shebang exclusion, clean file returns null
+- Tests for: AnalysisResult shape verification, env var disable
+
+### Pre-existing LSP Errors
+- LSP errors in fix-router.test.ts, guardrails.test.ts, submit.test.ts, history.test.ts, index.test.ts
+- These are pre-existing issues, NOT regressions from this task
+
+### Git Restore Issue
+- When restoring files with `git checkout HEAD --`, ensure you check status afterward
+- Any untracked files that should exist may be deleted - need to recreate them
