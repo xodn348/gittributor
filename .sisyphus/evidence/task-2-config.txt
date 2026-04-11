@@ -251,4 +251,4 @@ Unknown config field 'anotherUnknown' in ~/.gittributorrc.json
  3 skip
  0 fail
  865 expect() calls
-Ran 364 tests across 33 files. [6.98s]
+Ran 364 tests across 33 files. [6.57s]

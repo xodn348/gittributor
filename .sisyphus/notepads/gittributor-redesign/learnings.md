@@ -22,3 +22,16 @@
 - Bridge functions use sensible defaults for fields not in source type (e.g., `isArchived: false`, `hasContributing: false`)
 - Tests pass: 361 pass, 3 skip, 0 fail
 - `bun build src/types/index.ts --no-bundle` compiles successfully
+
+## [2026-04-11] Task 2: Config Environment Variables
+- `src/lib/config.ts` already has a centralized config system with `loadConfig()` returning `Config` object
+- Added `discoveryConfig` export with 5 new GITTRIBUTOR_* vars:
+  - `GITTRIBUTOR_DISCOVERY_MIN_STARS` → number, default: 1000
+  - `GITTRIBUTOR_DISCOVERY_MAX_STARS` → number, default: 10000
+  - `GITTRIBUTOR_STATIC_ANALYSIS_ENABLED` → boolean, default: true
+  - `GITTRIBUTOR_ISSUE_LABELS` → string, default: "good first issue,bug,help wanted"
+  - `GITTRIBUTOR_MAX_REPOS_PER_RUN` → number, default: 5
+- Used `parsePositiveIntegerEnv()` helper for numbers (consistent with analyzer.ts pattern)
+- Used `parseBooleanEnv()` helper for booleans
+- `discoveryConfig` exported as `as const` for immutability + `DiscoveryConfig` type alias
+- Tests still pass: 361 pass, 3 skip, 0 fail
