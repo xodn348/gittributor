@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync, rmdirSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   checkRateLimit,
@@ -22,7 +22,7 @@ describe("guardrails", () => {
       unlinkSync(join(testDir, "history.json"));
     } catch {}
     try {
-      rmdirSync(testDir, { recursive: true });
+      rmSync(testDir, { recursive: true, force: true });
     } catch {}
   });
 
@@ -78,7 +78,7 @@ describe("guardrails", () => {
       const result = await checkDuplicateContribution(
         "owner/repo",
         "src/index.ts",
-        "fix",
+        "bug-fix",
         historyPath
       );
       expect(result.passed).toBe(true);
@@ -89,7 +89,7 @@ describe("guardrails", () => {
       const existing = {
         "owner/repo": {
           "src/index.ts": {
-            fix: { status: "submitted", submittedAt: new Date().toISOString() },
+            "bug-fix": { status: "submitted", submittedAt: new Date().toISOString() },
           },
         },
       };
@@ -97,7 +97,7 @@ describe("guardrails", () => {
       const result = await checkDuplicateContribution(
         "owner/repo",
         "src/index.ts",
-        "fix",
+        "bug-fix",
         historyPath
       );
       expect(result.passed).toBe(false);
@@ -109,7 +109,7 @@ describe("guardrails", () => {
       const existing = {
         "owner/repo": {
           "src/index.ts": {
-            fix: { status: "submitted", submittedAt: new Date().toISOString() },
+            "bug-fix": { status: "submitted", submittedAt: new Date().toISOString() },
           },
         },
       };
@@ -128,7 +128,7 @@ describe("guardrails", () => {
       const existing = {
         "owner/repo": {
           "src/index.ts": {
-            fix: { status: "rejected", submittedAt: new Date().toISOString() },
+            "bug-fix": { status: "rejected", submittedAt: new Date().toISOString() },
           },
         },
       };
@@ -136,7 +136,7 @@ describe("guardrails", () => {
       const result = await checkDuplicateContribution(
         "owner/repo",
         "src/index.ts",
-        "fix",
+        "bug-fix",
         historyPath
       );
       expect(result.passed).toBe(true);
@@ -147,7 +147,7 @@ describe("guardrails", () => {
       const result = await checkDuplicateContribution(
         "owner/repo",
         "src/index.ts",
-        "fix",
+        "bug-fix",
         historyPath
       );
       expect(result.passed).toBe(true);

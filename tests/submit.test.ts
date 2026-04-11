@@ -170,12 +170,14 @@ describe("submit command — guardrail blocking", () => {
       }),
     );
 
-    const { checkContributingCompliance } = await import("../src/lib/contributing-checker.js");
-    spyOn(checkContributingCompliance, "checkContributingCompliance").mockImplementation(async () => ({
+    const mockComplianceCheck = mock(async () => ({
       hasCLA: true,
       requiresIssueFirst: false,
       hasPRTemplate: false,
       prTemplateContent: null,
+    }));
+    mock.module("../src/lib/contributing-checker.js", () => ({
+      checkContributingCompliance: mockComplianceCheck,
     }));
 
     const spawnMock = spyOn(Bun, "spawn");
@@ -197,7 +199,7 @@ describe("submit command — guardrail blocking", () => {
     expect(exitCode).toBe(1);
   });
 
-  test.skip("archived repo check requires isArchived field in Repository");
+  test.skip("archived repo check requires isArchived field in Repository", () => {});
 });
 
 describe("submit command — PR body templates", () => {

@@ -282,6 +282,12 @@ describe("runPipelineCommand oversized repository fallback", () => {
     maxPRsPerRepo: 1,
     targetLanguages: ["typescript"],
     verbose: false,
+    repoListPath: "/tmp/repos.txt",
+    maxPRsPerWeekPerRepo: 3,
+    maxPRsPerHour: 1,
+    contributionTypes: ["bug-fix", "docs", "code"],
+    historyPath: "/tmp/history.json",
+    dryRun: false,
   };
 
   test("skips oversized repository and continues to next repository in run pipeline", async () => {
