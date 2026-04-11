@@ -62,6 +62,7 @@ export async function showHistoryStats(
     stdout.write("═══════════════════════════════════════════\n");
   } catch {
     stdout.write("(No history found)\n");
+    return;
   }
 }
 
