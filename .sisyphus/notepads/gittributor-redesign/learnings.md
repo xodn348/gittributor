@@ -195,3 +195,83 @@
 ### Git Restore Issue
 - When restoring files with `git checkout HEAD --`, ensure you check status afterward
 - Any untracked files that should exist may be deleted - need to recreate them
+
+## [2026-04-11] Task 5: Enhanced Issue Discovery
+
+### Key Implementation Details
+- Created `src/lib/issue-discovery.ts` with enhanced `discoverIssues()` function
+- `discoverIssues(repo)` in `issue-discovery.ts` makes exactly 2 API calls via `Promise.all`:
+  - Call 1: labels [\"bug\", \"good-first-issue\"]
+  - Call 2: labels [\"help-wanted\", \"enhancement\", \"hacktoberfest\"]
+- Deduplicates by issue number (issues may appear in both calls)
+- Multi-factor scoring:
+  - Label score: security=40, bug=30, good-first-issue=20, help-wanted=15, enhancement=10
+  - Age score: <7d=20, <30d=15, <90d=10, <180d=5, >=180d→FILTER
+  - Comment score: 0=15, 1-3=10, 4-9=5, >=10→FILTER
+  - Reproduction steps in body: +15
+  - Small scope indicators in body: +10
+  - Impact patterns (crash, critical, security, etc.) in title/body: +20
+- Filters: assigned, linked PR (pullRequest field OR \"PR #\" in body), age>=180d, comments>=10
+- Returns top 3 scored issues per repo
+- Rate limit (403) → try/retry in github.ts → return [] gracefully
+
+### Pattern Reuse
+- `REPRODUCTION_PATTERNS`, `SMALL_SCOPE_PATTERNS`, `IMPACT_PATTERNS` defined in `issue-discovery.ts` (not imported from analyze.ts to avoid circular dependency)
+- These are identical to the patterns previously in `src/commands/analyze.ts:26-71`
+- `analyze.ts` now imports patterns from `issue-discovery.ts` for its own `scoreApproachability`/`scoreImpact` (old scoring)
+
+### Type Changes
+- Added `pullRequest?: boolean` to `Issue` interface in `src/types/index.ts`
+- Added `pullRequest` to `IssueSearchResult` in `src/lib/github.ts` and `--json pullRequest` to gh search
+- Added `ScoredIssue` to `src/types/index.ts` extending Issue with approachabilityScore, impactScore, totalScore
+
+### Architecture
+- `analyze.ts` has a thin wrapper `discoverIssues(repo)` that:
+  1. Calls `discoverIssuesCore(repo)` from `issue-discovery.ts`
+  2. Persists scored issues to `.gittributor/issues.json`
+  3. Prints proposal table
+  4. Returns scored issues
+- Tests mock `GitHubClient.prototype.searchIssues` at the prototype level (works for all callers)
+
+### Test Coverage
+- `tests/issue-discovery.test.ts` (pre-existing): 25 tests covering scoreIssue() - label scoring, age scoring, comment scoring, content patterns, filtering, multi-factor scoring, rate limiting
+- `tests/issues.test.ts`: Updated 4 tests for new scoring behavior:
+  - Staleness: 90d → 180d (test uses 200d/170d dates)
+  - Body length: removed filter (test updated to check all bodies pass)
+  - Score values: updated to match new multi-factor scoring
+  - Empty filter: uses commentsCount=15 instead of body length
+  - Added test: filters out 10+ comment issues
+
+### Critical Bugs Encountered
+1. **Circular import**: `issue-discovery.ts` importing patterns from `analyze.ts` caused circular dependency. Solved by defining patterns in `issue-discovery.ts` (source of truth) and exporting them for `analyze.ts` to import.
+2. **Write tool file deletion**: The `write` tool created files that were then deleted by a linter. Had to use `edit` tool and bash heredoc.
+3. **Recursive call**: `analyze.ts` wrapper named `discoverIssues` calling imported `discoverIssues` caused infinite recursion. Fixed by importing with alias: `import { discoverIssues as discoverIssuesCore }`.
+4. **Label filtering in tests**: Tests creating issues with no labels failed because enhanced search filters by labels. Updated to give issues matching labels.
+5. **Date.now() not mocked**: `issue-discovery.test.ts` tests needed `Date.now = () => now` in beforeEach to properly test age scoring.
+
+### Test Results
+- Baseline: 361 pass, 3 skip, 0 fail
+- After task 5: 404 pass, 3 skip, 0 fail (net +43 tests)
+- 25 new tests in `issue-discovery.test.ts` (pre-existing file)
+- 4 updated tests in `issues.test.ts`
+
+## [2026-04-11] Task 5: Enhanced Issue Discovery
+- Created src/lib/issue-discovery.ts with enhanced discoverIssues() function
+- Multi-factor scoring: label (security=40, bug=30, good-first=20, help-wanted=15, enhancement=10) + age (6mo filter) + comment count (10+ filtered) + reproduction steps (+15) + scope indicators (+10) + impact patterns (+20)
+- Returns top 3 scored issues per repo sorted by score descending
+- Makes 2 API calls per repo (primary: bug/good-first, secondary: help-wanted/enhancement/hacktoberfest)
+- Rate limiting (403) returns empty array gracefully (handled by searchIssues)
+- Updated src/commands/analyze.ts to delegate to discoverIssuesEnhanced, removed old scoring/filtering code
+- Added ScoredIssue type to src/types/index.ts (also added pullRequest?: boolean to Issue)
+- Wrote 25 new tests in tests/issue-discovery.test.ts covering scoring, filtering, rate limiting
+- Updated tests/issues.test.ts to match new 6-month filter window and new scoring values
+- Tests: 404 pass, 3 skip, 0 fail (baseline 361 pass)
+- Pattern: use bash 'cat > file <<EOF' for creating new files reliably (edit tool had issues with persistence)
+- LSP errors in issue-discovery.ts: ScoredIssue was locally defined but analyze.ts imported it - resolved by adding ScoredIssue to types/index.ts and re-exporting from issue-discovery.ts
+
+### Implementation Details (continued)
+- github.ts was modified to include pullRequest field in gh search issues output (IssueSearchResult interface + JSON fields + return mapping)
+- Tests/github.test.ts was also modified by tool to expect pullRequest in gh search output
+- Using GitHubAPIError in rate limit test requires importing from src/lib/errors
+- Pattern note: tests using real Date.now() (not mocked) for age scoring tests - scoreIssue uses real Date.now(), not mocked
+- When hasLinkedPR checks issue.pullRequest === true AND /PR\s+#\d+/i in body
