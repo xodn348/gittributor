@@ -62,32 +62,36 @@ const isRecentlyActive = (updatedAt: string): boolean => {
   return Date.now() - updatedMs <= THIRTY_DAYS_MS;
 };
 
-const checkContributingMd = async (client: GitHubClient, repoFullName: string): Promise<boolean> => {
-  try {
-    await client.checkFileExists(repoFullName, "CONTRIBUTING.md");
-    return true;
-  } catch {
-    return false;
-  }
+const isGitHubClient = (arg: unknown): arg is GitHubClient => {
+  return arg instanceof GitHubClient;
 };
 
-export async function discoverReposFromAPI(client: GitHubClient): Promise<TrendingRepo[]> {
-  const languages = discoveryConfig.staticAnalysisEnabled
-    ? ["typescript", "javascript", "python"]
-    : ["typescript"];
-
+export async function discoverReposFromAPI(
+  client: GitHubClient,
+  options?: Partial<DiscoverOptions>,
+): Promise<TrendingRepo[]> {
   let fetchedRepos: Repository[] = [];
+
+  const searchLanguage = (options?.language?.trim() || "typescript").toLowerCase();
+  const minStars = options?.minStars ?? discoveryConfig.minStars;
+  const maxRepos = options?.limit ?? discoveryConfig.maxReposPerRun;
 
   try {
     fetchedRepos = await client.searchRepositories({
-      minStars: discoveryConfig.minStars,
-      languages,
-      limit: discoveryConfig.maxReposPerRun * 4,
+      minStars,
+      languages: [searchLanguage],
+      limit: maxRepos,
     });
   } catch (err) {
     if (err instanceof GitHubAPIError) {
       const msg = err.message.toLowerCase();
-      if (msg.includes("authentication") || msg.includes("auth") || msg.includes("token") || msg.includes("unauthorized") || err.exitCode === 1) {
+      if (
+        msg.includes("authentication") ||
+        msg.includes("auth") ||
+        msg.includes("token") ||
+        msg.includes("unauthorized") ||
+        err.exitCode === 1
+      ) {
         warn("GitHub authentication required. Please run 'gh auth login' first.");
         warn("Falling back to curated repo list...");
       } else {
@@ -114,14 +118,18 @@ export async function discoverReposFromAPI(client: GitHubClient): Promise<Trendi
     debug("No repos with recent activity found, using all fetched repos");
   }
 
-  const candidates = (recentlyActive.length > 0 ? recentlyActive : fetchedRepos)
+  const scored = (recentlyActive.length > 0 ? recentlyActive : fetchedRepos)
     .map((r) => toTrendingRepo(r))
-    .sort((a, b) => scoreRepo(b) - scoreRepo(a))
-    .slice(0, Math.min(discoveryConfig.maxReposPerRun, 3));
+    .map((r) => ({ repo: r, score: scoreRepo(r) }))
+    .sort((a, b) => b.score - a.score);
+
+  const topCandidates = scored
+    .slice(0, 2)
+    .map((s) => s.repo);
 
   const enriched: TrendingRepo[] = [];
 
-  for (const candidate of candidates) {
+  for (const candidate of topCandidates) {
     try {
       const repoInfo = await client.getRepoInfo(candidate.fullName);
 
@@ -135,12 +143,10 @@ export async function discoverReposFromAPI(client: GitHubClient): Promise<Trendi
         continue;
       }
 
-      const hasContributing = await checkContributingMd(client, candidate.fullName);
-
       enriched.push({
         ...candidate,
         isArchived: repoInfo.isArchived,
-        hasContributing,
+        hasContributing: false,
       });
     } catch (err) {
       debug(`Failed to enrich ${candidate.fullName}: ${String(err)}`);
@@ -150,7 +156,29 @@ export async function discoverReposFromAPI(client: GitHubClient): Promise<Trendi
 
   return enriched
     .sort((a, b) => scoreRepo(b) - scoreRepo(a))
-    .slice(0, discoveryConfig.maxReposPerRun);
+    .slice(0, maxRepos);
+}
+
+export async function discoverRepos(
+  clientOrOptions?: GitHubClient | DiscoverOptions,
+): Promise<TrendingRepo[]> {
+  const config = await loadConfig();
+  const githubClient = isGitHubClient(clientOrOptions) ? clientOrOptions : new GitHubClient();
+  const passedOptions = isGitHubClient(clientOrOptions) ? undefined : clientOrOptions;
+
+  let yamlRepos: TrendingRepo[] = [];
+  try {
+    yamlRepos = await loadTrendingRepos(config);
+  } catch {
+    yamlRepos = [];
+  }
+
+  if (yamlRepos.length > 0) {
+    const filtered = filterRepoList(yamlRepos, {});
+    return await filterAndEnrichRepos(filtered, { language: "TypeScript", minStars: 1000, limit: 10 });
+  }
+
+  return await discoverReposFromAPI(githubClient, passedOptions);
 }
 
 export interface DiscoverOptions {
@@ -402,39 +430,47 @@ const searchReposFallback = async (
 export async function runDiscoverCommand(options: DiscoverOptions): Promise<TrendingRepo[]> {
   const config = await loadConfig();
   const normalizedOptions = normalizeOptions(options);
-  
+
   let trendingRepos: TrendingRepo[] = [];
-  
+
   const yamlRepos = await loadTrendingRepos(config);
-  
+
   if (yamlRepos.length > 0) {
     const filtered = filterRepoList(yamlRepos, {
       languages: normalizedOptions.language ? [normalizedOptions.language] : undefined,
       minStars: normalizedOptions.minStars,
     });
     info(`Filtered curated repos to ${filtered.length} by language/minStars`);
-    
+
     trendingRepos = await filterAndEnrichRepos(filtered, normalizedOptions);
   } else {
-    info("No YAML repo list found, falling back to GitHub search");
-    const searchResults = await searchReposFallback(normalizedOptions);
-    
-    trendingRepos = await filterAndEnrichRepos(
-      searchResults.map((r): TrendingRepo => ({
-        owner: r.fullName.split("/")[0],
-        name: r.fullName.split("/")[1],
-        fullName: r.fullName,
-        stars: r.stars,
-        language: r.language,
-        description: r.description,
-        isArchived: false,
-        defaultBranch: "main",
-        hasContributing: false,
-        topics: [],
-        openIssues: r.openIssuesCount,
-      })),
-      normalizedOptions
-    );
+    info("No YAML repo list found, using dynamic discovery");
+    const githubClient = new GitHubClient();
+    const apiResults = await discoverRepos(githubClient);
+
+    if (apiResults.length > 0) {
+      trendingRepos = apiResults;
+    } else {
+      info("No repos from API, falling back to search with options");
+      const searchResults = await searchReposFallback(normalizedOptions);
+
+      trendingRepos = await filterAndEnrichRepos(
+        searchResults.map((r): TrendingRepo => ({
+          owner: r.fullName.split("/")[0],
+          name: r.fullName.split("/")[1],
+          fullName: r.fullName,
+          stars: r.stars,
+          language: r.language,
+          description: r.description,
+          isArchived: false,
+          defaultBranch: "main",
+          hasContributing: false,
+          topics: [],
+          openIssues: r.openIssuesCount,
+        })),
+        normalizedOptions
+      );
+    }
   }
 
   await persistDiscoveries(trendingRepos);
@@ -464,4 +500,3 @@ export async function runDiscoverCommand(options: DiscoverOptions): Promise<Tren
   return trendingRepos;
 }
 
-export { runDiscoverCommand as discoverRepos };

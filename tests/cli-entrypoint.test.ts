@@ -148,6 +148,8 @@ export const discoverRepos = async (options: unknown): Promise<unknown[]> => {
 
   return [];
 };
+
+export const runDiscoverCommand = discoverRepos;
 `,
   );
 

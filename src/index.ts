@@ -2,7 +2,7 @@
 
 import { discoverIssues, printIssueProposalTable } from "./commands/analyze.js";
 import { CLIArgumentError, parseArgs } from "./commands/cli";
-import { discoverRepos, discoverReposFromAPI } from "./commands/discover";
+import { runDiscoverCommand as runDiscoverCmd } from "./commands/discover";
 import { reviewFix } from "./commands/review";
 import { submitApprovedFix } from "./commands/submit";
 import { analyzeCodebase, sanitizeAnalysisForPersistence } from "./lib/analyzer";
@@ -400,7 +400,7 @@ const buildPersistedFixResult = (
 
 const runDiscoverCommand = async (runtimeConfig: Config, commandArgs: string[]): Promise<number> => {
   const parsedArgs = parseArgs(commandArgs);
-  const discoveredRepositories = await discoverRepos({
+  const discoveredRepositories = await runDiscoverCmd({
     language: parsedArgs.flags.language ?? runtimeConfig.targetLanguages?.[0],
     minStars: parsedArgs.flags.minStars ?? runtimeConfig.minStars,
     limit: parsedArgs.flags.maxResults,
@@ -632,7 +632,7 @@ const runCommand = async (argv: string[], output: CliOutput): Promise<number> =>
       return runDiscoverCommand(runtimeConfig ?? await resolveRuntimeConfig(globalFlags), commandArgs);
     case "analyze":
       {
-        const repos = await discoverRepos({});
+        const repos = await runDiscoverCmd({});
         const { analyzeRepositories } = await import("./commands/analyze.js");
         const { setStateData } = await import("./lib/state.js");
         const opportunities = await analyzeRepositories(repos);
