@@ -152,45 +152,6 @@ export const runDiscoverCommand = discoverRepos;
   );
 
   await Bun.write(
-    join(tempDir, "src", "commands", "analyze.ts"),
-    `import { getStubState } from "../test-stubs";
-
-export const discoverIssues = async (): Promise<unknown[]> => {
-  getStubState().discoverIssuesCalls += 1;
-  return [{
-    id: 123,
-    number: 123,
-    title: "Issue title",
-    body: "Issue body",
-    url: "https://github.com/owner/repo/issues/123",
-    repoFullName: "owner/repo",
-    labels: ["good first issue"],
-    createdAt: "2026-04-01T00:00:00.000Z",
-    assignees: [],
-    reactions: 7,
-    commentsCount: 3,
-    approachabilityScore: 4,
-    impactScore: 2,
-    codebaseScore: 1,
-    totalScore: 7,
-  }];
-};
-
-
-
-export const printIssueProposalTable = (): void => {
-  process.stdout.write("-------------------------------------------------\\n");
-  process.stdout.write("  TOP 5 FIXABLE ISSUES for owner/repo\\n");
-  process.stdout.write("-------------------------------------------------\\n");
-  process.stdout.write("[1] #123  Issue title   (score: 7)\\n");
-  process.stdout.write("    Complexity: low | +1 7 reactions\\n");
-  process.stdout.write("-------------------------------------------------\\n");
-  process.stdout.write("Run 'gittributor fix' to fix issue #123\\n");
-};
-`,
-  );
-
-  await Bun.write(
     join(tempDir, "src", "commands", "review.ts"),
     `import { getStubState } from "../test-stubs";
 
@@ -293,6 +254,57 @@ export const debug = (message: string): void => {
   if (process.env.VERBOSE === "true") {
     process.stdout.write(message + "\\n");
   }
+};
+`,
+  );
+
+  await Bun.write(
+    join(tempDir, "src", "lib", "github.ts"),
+    `export class GitHubClient {
+  async searchRepositories(options: unknown): Promise<unknown[]> { return []; }
+  async searchIssues(repo: string, options: unknown): Promise<unknown[]> { return []; }
+  async getRepoInfo(fullName: string): Promise<unknown> { return { isArchived: false, hasOpenUserPR: false, updatedAt: new Date().toISOString(), stargazerCount: 100 }; }
+}
+export class GitHubAPIError extends Error {
+  constructor(message: string, public exitCode?: number) { super(message); this.name = "GitHubAPIError"; }
+}
+`,
+  );
+
+  await Bun.write(
+    join(tempDir, "src", "lib", "issue-discovery.ts"),
+    `import { getStubState } from "../test-stubs";
+import type { Repository } from "../types/index.js";
+
+export const discoverIssues = async (repo: Repository): Promise<unknown[]> => {
+  getStubState().discoverIssuesCalls += 1;
+  return [{
+    id: 123,
+    number: 123,
+    title: "Issue title",
+    body: "Issue body",
+    url: "https://github.com/owner/repo/issues/123",
+    repoFullName: "owner/repo",
+    labels: ["good first issue"],
+    createdAt: "2026-04-01T00:00:00.000Z",
+    assignees: [],
+    reactions: 7,
+    commentsCount: 3,
+    approachabilityScore: 4,
+    impactScore: 2,
+    codebaseScore: 1,
+    totalScore: 7,
+  }];
+};
+
+export const printIssueProposalTable = (): void => {
+  process.stdout.write("-------------------------------------------------\\n");
+  process.stdout.write("  TOP 5 FIXABLE ISSUES for owner/repo\\n");
+  process.stdout.write("-------------------------------------------------\\n");
+  process.stdout.write("[1] #123  Issue title   (score: 7)\\n");
+  process.stdout.write("    Complexity: low | +1 7 reactions\\n");
+  process.stdout.write("-------------------------------------------------\\n");
+  process.stdout.write("Run 'gittributor fix' to fix issue #123\\n");
 };
 `,
   );

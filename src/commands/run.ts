@@ -1,16 +1,16 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { getHistoryStats } from "../lib/history.js";
-import { setStateData, saveState, loadState, resetState } from "../lib/state.js";
+import { resetState } from "../lib/state.js";
 import { debug, error as logError, warn } from "../lib/logger.js";
 import { loadConfig, getTargetLanguages } from "../lib/config.js";
 import { getGlobalWeeklyCount, MAX_GLOBAL_WEEKLY } from "../lib/guardrails.js";
-import { forkRepoWithToken, createBranchWithToken, commitFilesWithToken, createPullRequestWithToken, GitHubAPIError } from "../lib/github.js";
+import { createBranchWithToken, commitFilesWithToken, createPullRequestWithToken, GitHubAPIError } from "../lib/github.js";
+import { discoverIssues } from "../lib/issue-discovery.js";
 import type { AnalysisResult, Config, ContributionType, Issue, Repository, TrendingRepo } from "../types/index.js";
 import type { FixResult as GeneratedFixResult } from "../lib/fix-generator.js";
 
-const VALID_TYPES: readonly ContributionType[] = ["typo", "docs", "deps", "test", "code", "bug-fix", "performance", "type-safety", "logic-error", "static-analysis"];
+const VALID_TYPES: readonly ContributionType[] = ["bug-fix", "performance", "type-safety", "logic-error", "static-analysis"];
 
 export interface RunOptions {
   dryRun?: boolean;
@@ -22,11 +22,12 @@ export interface RunOptions {
 export interface RunDependencies {
   loadConfig?: () => Promise<Config>;
   discoverRepos: (options: Record<string, unknown>) => Promise<TrendingRepo[]>;
+  discoverIssues?: (repo: Repository) => Promise<Issue[]>;
   analyzeCodebase: (repo: Repository, issue?: Issue) => Promise<AnalysisResult>;
   generateFix: (analysis: AnalysisResult, issue: Issue, repo: Repository) => Promise<GeneratedFixResult>;
   reviewFix: (options?: { autoApprove?: boolean }) => Promise<number>;
   submitApprovedFix: (options?: Record<string, unknown>) => Promise<number>;
-  showHistoryStats: (path: string, options?: { stdout?: WritableLike }) => Promise<void>;
+  showHistoryStats?: (path: string, options?: { stdout?: WritableLike }) => Promise<void>;
 }
 
 interface WritableLike {
@@ -116,7 +117,6 @@ const getGitHubToken = (): string | undefined => {
 };
 
 const submitPRForResult = async (
-  result: GeneratedFixResult,
   syntheticIssue: Issue,
   repoFullName: string,
   analysis: AnalysisResult,
@@ -162,12 +162,17 @@ const submitPRForResult = async (
     prBodyLines.push("");
     prBodyLines.push(`Fixes #${syntheticIssue.number}`);
   }
+  prBodyLines.push("");
+  prBodyLines.push("## Verification");
+  prBodyLines.push("Run `bun test` to verify all tests pass.");
+  prBodyLines.push("Run `bun run typecheck` to verify TypeScript compiles.");
 
   const prBody = prBodyLines.join("\n");
 
   if (dryRun) {
     process.stdout.write(`[DRY RUN] Would create PR: ${prTitle} on ${repoFullName}\n`);
     process.stdout.write(`[DRY RUN] Files: ${fixPayload.changes.map((c) => c.file).join(", ")}\n`);
+    process.stdout.write(`[DRY RUN] Verification: run \`bun test\` and \`bun run typecheck\` before submitting.\n`);
     return true;
   }
 
@@ -193,6 +198,7 @@ const submitPRForResult = async (
       body: prBody,
     });
 
+    debug(`[run] PR created for ${repoFullName} — verification: bun test && bun run typecheck`);
     process.stdout.write(`Submitted PR: ${prTitle}\n`);
     return true;
   } catch (err) {
@@ -371,6 +377,7 @@ export async function runOrchestrator(
       printStage("📊", "Analyzing repositories...");
       const eligibleRepos = repos.slice(0, 5);
       const analyses: AnalysisResult[] = [];
+      const topIssues: (Issue | undefined)[] = [];
       for (const tr of eligibleRepos) {
         process.stdout.write("  Analyzing: " + tr.fullName + "\n");
         const repo: Repository = {
@@ -385,14 +392,28 @@ export async function runOrchestrator(
           description: tr.description,
         };
         try {
-          const analysis = await analyzeCodebase(repo);
+          const issuesFn = deps.discoverIssues ?? discoverIssues;
+          const issues = await issuesFn(repo);
+          const topIssue = issues[0];
+          debug(`[run] Top issue for ${tr.fullName}: ${topIssue?.title ?? "none (free-form)"}`);
+          const analysis = await Promise.race([
+            analyzeCodebase(repo, topIssue),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Repo analysis timeout after 60s")), 60000)
+            ),
+          ]);
           analyses.push(analysis);
+          topIssues.push(topIssue);
           totalReposAnalyzed++;
           totalIssuesFound++;
           process.stdout.write("    Analysis: " + (analysis.suggestedApproach.slice(0, 80)) + "...\n");
         } catch (err) {
-          logError(`Error analyzing ${tr.fullName}: ${err instanceof Error ? err.message : String(err)}`);
-          debug(`[run] Skipping ${tr.fullName} due to analysis error`);
+          if (err instanceof Error && err.message.includes("timeout")) {
+            warn(`Skipping ${tr.fullName}: analysis timed out after 60s`);
+          } else {
+            logError(`Error analyzing ${tr.fullName}: ${err instanceof Error ? err.message : String(err)}`);
+            debug(`[run] Skipping ${tr.fullName} due to analysis error`);
+          }
           continue;
         }
       }
@@ -418,6 +439,7 @@ export async function runOrchestrator(
         result: GeneratedFixResult;
         repo: Repository;
         analysis: AnalysisResult;
+        issue: Issue;
       }
       const successfulFixes: SuccessfulFix[] = [];
       for (let i = 0; i < eligibleRepos.length; i++) {
@@ -453,9 +475,10 @@ export async function runOrchestrator(
           createdAt: new Date().toISOString(),
           assignees: [],
         };
+        const issueToUse: Issue = topIssues[i] ?? syntheticIssue;
         try {
-          const fixResult = await generateFix(analysis, syntheticIssue, repo);
-          successfulFixes.push({ result: fixResult, repo, analysis });
+          const fixResult = await generateFix(analysis, issueToUse, repo);
+          successfulFixes.push({ result: fixResult, repo, analysis, issue: issueToUse });
           totalFixesGenerated++;
           process.stdout.write("    Fix: " + (fixResult.explanation.slice(0, 80)) + "...\n");
         } catch (err) {
@@ -473,35 +496,13 @@ export async function runOrchestrator(
 
       if (isDryRun()) {
         process.stdout.write("\n=== PR Submission (Dry Run) ===\n");
-        for (const { result: fixResult, repo, analysis } of successfulFixes) {
-          const syntheticIssue: Issue = {
-            id: 0,
-            number: 0,
-            title: "Free-form analysis",
-            body: analysis.suggestedApproach || "",
-            url: `https://github.com/${repo.fullName}`,
-            repoFullName: repo.fullName,
-            labels: [],
-            createdAt: new Date().toISOString(),
-            assignees: [],
-          };
-          await submitPRForResult(fixResult, syntheticIssue, repo.fullName, analysis);
+        for (const { result: fixResult, repo, analysis, issue } of successfulFixes) {
+          await submitPRForResult(issue, repo.fullName, analysis);
         }
         process.stdout.write("==============================\n");
       } else {
-        for (const { result: fixResult, repo, analysis } of successfulFixes) {
-          const syntheticIssue: Issue = {
-            id: 0,
-            number: 0,
-            title: "Free-form analysis",
-            body: analysis.suggestedApproach || "",
-            url: `https://github.com/${repo.fullName}`,
-            repoFullName: repo.fullName,
-            labels: [],
-            createdAt: new Date().toISOString(),
-            assignees: [],
-          };
-          await submitPRForResult(fixResult, syntheticIssue, repo.fullName, analysis);
+        for (const { result: fixResult, repo, analysis, issue } of successfulFixes) {
+          await submitPRForResult(issue, repo.fullName, analysis);
         }
       }
       lastSubmitResult = submitResult;

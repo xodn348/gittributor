@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { discoverIssues, printIssueProposalTable } from "./commands/analyze.js";
+import { discoverIssues, printIssueProposalTable } from "./lib/issue-discovery.js";
 import { CLIArgumentError, parseArgs } from "./commands/cli";
 import { runDiscoverCommand as runDiscoverCmd } from "./commands/discover";
 import { reviewFix } from "./commands/review";

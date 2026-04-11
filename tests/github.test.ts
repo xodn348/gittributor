@@ -177,7 +177,7 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "5",
       ],
@@ -196,18 +196,14 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "5",
       ],
       stdout: "pipe",
       stderr: "pipe",
     });
-    expect(spawnMock).toHaveBeenNthCalledWith(3, {
-      cmd: ["gh", "api", "repos/owner/repo/issues/42"],
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+
   });
 
   it("searchIssues defaults to good first issue label when labels are empty", async () => {
@@ -238,7 +234,7 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "3",
       ],
@@ -419,11 +415,7 @@ describe("GitHubClient", () => {
       stdout: "pipe",
       stderr: "pipe",
     });
-    expect(spawnMock).toHaveBeenNthCalledWith(3, {
-      cmd: ["git", "-C", "/tmp/repo", "push", "origin", "fix/issue-42"],
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+
   });
 
   it("createPR returns PR submission details from gh output URL", async () => {
@@ -518,7 +510,7 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "2",
       ],
@@ -602,7 +594,7 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "5",
       ],
@@ -621,18 +613,14 @@ describe("GitHubClient", () => {
         "--state",
         "open",
         "--json",
-        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
+        "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
         "--limit",
         "5",
       ],
       stdout: "pipe",
       stderr: "pipe",
     });
-    expect(spawnMock).toHaveBeenNthCalledWith(3, {
-      cmd: ["gh", "api", "repos/owner/repo/issues/42"],
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+
 
     const reactionCalls = spawnMock.mock.calls.filter((call) => {
       const firstArg = call[0];

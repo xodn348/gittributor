@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { debug, info, warn } from "./logger.js";
 import { GitHubClient } from "./github.js";
 import type { Issue, Repository, ScoredIssue } from "../types/index.js";
 export type { ScoredIssue };
@@ -78,6 +81,27 @@ const scoreComments = (commentsCount: number | undefined): number => {
   return -1;
 };
 
+const scoreBugType = (issue: Issue): number => {
+  const text = `${issue.title}\n${issue.body ?? ""}`.toLowerCase();
+
+  const nullNpePattern = /\b(null|npe|nullpointer|null pointer|undefined|nil)\b/i;
+  if (nullNpePattern.test(text)) return 40;
+
+  const leakPattern = /\b(memory leak|resource leak|leak|garbage collection|gc pressure)\b/i;
+  if (leakPattern.test(text)) return 30;
+
+  const typePattern = /\b(type error|type mismatch|typescript error|type safety)\b/i;
+  if (typePattern.test(text)) return 20;
+
+  const logicPattern = /\b(logic error|logical bug|incorrect|business logic)\b/i;
+  if (logicPattern.test(text)) return 10;
+
+  const enhancementPattern = /\b(enhancement|improvement|feature request|refactor)\b/i;
+  if (enhancementPattern.test(text)) return 0;
+
+  return 0;
+};
+
 const hasLinkedPR = (issue: Issue): boolean => {
   if (issue.pullRequest === true) return true;
   if (issue.body && /PR\s+#\d+/i.test(issue.body)) return true;
@@ -96,6 +120,7 @@ export function scoreIssue(issue: Issue): ScoredIssue | null {
   if (commentScore < 0) return null;
 
   const labelScore = scoreLabel(issue.labels);
+  const bugTypeScore = scoreBugType(issue);
   const body = issue.body ?? "";
   const text = `${issue.title}\n${body}`;
 
@@ -104,7 +129,7 @@ export function scoreIssue(issue: Issue): ScoredIssue | null {
     (hasPatternMatch(body, SMALL_SCOPE_PATTERNS) ? 10 : 0);
   const impactBonus = hasPatternMatch(text, IMPACT_PATTERNS) ? 20 : 0;
 
-  const approachabilityScore = labelScore + commentScore + approachabilityBonus;
+  const approachabilityScore = labelScore + commentScore + approachabilityBonus + bugTypeScore;
   const impactScore = ageScore + impactBonus;
   const totalScore = approachabilityScore + impactScore;
 
@@ -126,31 +151,92 @@ async function fetchIssuesByLabels(
 }
 
 export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
+  info(`Discovering issues for ${repo.fullName}...`);
+  const scored = await discoverIssuesCore(repo);
+  await persistIssues(scored);
+  printProposalTable(scored);
+  debug(`Discovered ${scored.length} actionable issue(s) for ${repo.fullName}.`);
+  return scored;
+}
+
+async function persistIssues(issues: ScoredIssue[]): Promise<void> {
+  const outputDirectory = join(process.cwd(), ".gittributor");
+  const outputPath = join(outputDirectory, "issues.json");
+
+  await mkdir(outputDirectory, { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(issues, null, 2)}\n`, "utf8");
+}
+
+let lastPrintedProposalTable = "";
+
+const getProposalTableLines = (issues: ScoredIssue[]): string[] => {
+  const top = issues.slice(0, 5);
+
+  if (top.length === 0) {
+    return ["No actionable issues found."];
+  }
+
+  const separator = "─".repeat(80);
+  const lines = [separator, "  PROPOSED ISSUES (top scored — ready for analysis)", separator];
+
+  for (const issue of top) {
+    const scoreLabel = `score ${issue.totalScore}`;
+    const truncatedTitle = issue.title.length > 50 ? `${issue.title.slice(0, 47)}...` : issue.title;
+    lines.push(`  #${String(issue.number).padEnd(6)} [${scoreLabel.padEnd(8)}] ${truncatedTitle}`);
+    lines.push(`           ${issue.url}`);
+  }
+
+  lines.push(separator);
+  return lines;
+};
+
+const printProposalTable = (issues: ScoredIssue[]): void => {
+  const table = getProposalTableLines(issues).join("\n");
+  lastPrintedProposalTable = table;
+
+  for (const line of table.split("\n")) {
+    info(line);
+  }
+};
+
+export function buildIssueProposalTable(repo: Repository, issues: ScoredIssue[]): string {
+  void repo;
+  return getProposalTableLines(issues).join("\n");
+}
+
+export function printIssueProposalTable(repo: Repository, issues: ScoredIssue[]): void {
+  const table = buildIssueProposalTable(repo, issues);
+
+  if (table === lastPrintedProposalTable) {
+    lastPrintedProposalTable = "";
+    return;
+  }
+
+  lastPrintedProposalTable = table;
+
+  for (const line of table.split("\n")) {
+    info(line);
+  }
+}
+
+async function discoverIssuesCore(repo: Repository): Promise<ScoredIssue[]> {
   const client = new GitHubClient();
 
-  let primaryIssues: Issue[] = [];
-  let secondaryIssues: Issue[] = [];
+  let allIssues: Issue[] = [];
 
   try {
-    [primaryIssues, secondaryIssues] = await Promise.all([
-      fetchIssuesByLabels(client, repo.fullName, ["bug", "good-first-issue"], 50),
-      fetchIssuesByLabels(client, repo.fullName, ["help-wanted", "enhancement", "hacktoberfest"], 50),
-    ]);
-  } catch {
+    allIssues = await fetchIssuesByLabels(
+      client,
+      repo.fullName,
+      ["bug", "good-first-issue", "help-wanted", "enhancement", "hacktoberfest"],
+      50,
+    );
+  } catch (err) {
+    warn(`[ISSUE DISCOVERY ERROR] ${String(err)}`);
     return [];
   }
 
-  const seen = new Set<number>();
-  const uniqueIssues: Issue[] = [];
-
-  for (const issue of [...primaryIssues, ...secondaryIssues]) {
-    if (!seen.has(issue.number)) {
-      seen.add(issue.number);
-      uniqueIssues.push(issue);
-    }
-  }
-
-  const scored = uniqueIssues
+  const scored = allIssues
     .map((issue) => scoreIssue(issue))
     .filter((s): s is ScoredIssue => s !== null)
     .sort((left, right) => {

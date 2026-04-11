@@ -39,7 +39,7 @@ test("loads defaults when required env vars are present", async () => {
       repoListPath: "repos.yaml",
       maxPRsPerWeekPerRepo: 2,
       maxPRsPerHour: 3,
-      contributionTypes: ["docs", "typo", "deps", "test", "code"],
+      contributionTypes: ["bug-fix", "performance", "type-safety", "logic-error", "static-analysis"],
       historyPath: ".gittributor/history.json",
       dryRun: false,
     });
@@ -155,7 +155,7 @@ test("loads defaults when required env vars are present", async () => {
     expect(config.repoListPath).toBe("repos.yaml");
     expect(config.maxPRsPerWeekPerRepo).toBe(2);
     expect(config.maxPRsPerHour).toBe(3);
-    expect(config.contributionTypes).toEqual(["docs", "typo", "deps", "test", "code"]);
+    expect(config.contributionTypes).toEqual(["bug-fix", "performance", "type-safety", "logic-error", "static-analysis"]);
     expect(config.historyPath).toBe(".gittributor/history.json");
     expect(config.dryRun).toBe(false);
   });
@@ -218,7 +218,7 @@ test("loads defaults when required env vars are present", async () => {
       JSON.stringify({
         repoListPath: "global-repos.yaml",
         maxPRsPerWeekPerRepo: 10,
-        contributionTypes: ["code"],
+        contributionTypes: ["bug-fix"],
       }),
     );
 
@@ -237,7 +237,7 @@ test("loads defaults when required env vars are present", async () => {
 
       expect(config.repoListPath).toBe("local-repos.yaml");
       expect(config.maxPRsPerWeekPerRepo).toBe(5);
-      expect(config.contributionTypes).toEqual(["code"]);
+      expect(config.contributionTypes).toEqual(["bug-fix"]);
     } finally {
       process.chdir(originalCwd);
     }

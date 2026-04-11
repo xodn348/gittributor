@@ -6,7 +6,7 @@ import { GitHubClient } from "../src/lib/github";
 import type { Issue, Repository } from "../src/types";
 import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
-const { buildIssueProposalTable, discoverIssues } = await import("../src/commands/analyze");
+const { buildIssueProposalTable, discoverIssues } = await import("../src/lib/issue-discovery");
 
 const repoFixture: Repository = {
   id: 1,

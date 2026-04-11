@@ -163,7 +163,7 @@ describe("analyzeCodebase", () => {
     );
   });
 
-  it("shallow clones, limits analysis to five files, persists analysis, and cleans the temp directory", async () => {
+  it("shallow clones, limits analysis to ten files, persists analysis, and cleans the temp directory", async () => {
     let capturedSystem = "";
     let capturedPrompt = "";
 
@@ -188,12 +188,18 @@ describe("analyzeCodebase", () => {
 
         mkdirSync(path.join(cloneTarget, "src", "api"), { recursive: true });
         mkdirSync(path.join(cloneTarget, "src", "utils"), { recursive: true });
-        writeFileSync(path.join(cloneTarget, "src", "parser.ts"), "export const parser = true;\n");
-        writeFileSync(path.join(cloneTarget, "src", "api", "client.ts"), "export const client = true;\n");
+        writeFileSync(path.join(cloneTarget, "src", "parser.ts"), "export const parser = true;\nconsole.log('debug');\n");
+        writeFileSync(path.join(cloneTarget, "src", "api", "client.ts"), "export const client = (x: any) => x;\n");
         writeFileSync(path.join(cloneTarget, "src", "utils", "a.ts"), "export const a = 1;\n");
         writeFileSync(path.join(cloneTarget, "src", "utils", "b.ts"), "export const b = 2;\n");
         writeFileSync(path.join(cloneTarget, "src", "utils", "c.ts"), "export const c = 3;\n");
         writeFileSync(path.join(cloneTarget, "src", "utils", "d.ts"), "export const d = 4;\n");
+        writeFileSync(path.join(cloneTarget, "src", "utils", "e.ts"), "export const e = 5;\n");
+        writeFileSync(path.join(cloneTarget, "src", "utils", "f.ts"), "export const f = 6;\n");
+        writeFileSync(path.join(cloneTarget, "src", "utils", "g.ts"), "export const g = 7;\n");
+        writeFileSync(path.join(cloneTarget, "src", "utils", "h.ts"), "export const h = 8;\n");
+        writeFileSync(path.join(cloneTarget, "src", "utils", "i.ts"), "export const i = 9;\n");
+        writeFileSync(path.join(cloneTarget, "src", "utils", "j.ts"), "export const j = 10;\n");
 
         return createMockProcess({});
       });
@@ -225,8 +231,9 @@ describe("analyzeCodebase", () => {
     expect(capturedPrompt).toContain(repositoryFixture.fullName);
     expect(capturedPrompt).toContain("File: src/parser.ts");
     expect(capturedPrompt).toContain("File: src/api/client.ts");
-    expect(capturedPrompt.match(/^File: /gm)?.length).toBe(3);
-    expect(capturedPrompt).not.toContain("File: src/utils/d.ts");
+    expect(capturedPrompt.match(/^File: /gm)?.length).toBe(10);
+    expect(capturedPrompt).not.toContain("File: src/utils/i.ts");
+    expect(capturedPrompt).not.toContain("File: src/utils/j.ts");
 
     expect(result).toMatchObject({
       issueId: issueFixture.id,
@@ -239,8 +246,8 @@ describe("analyzeCodebase", () => {
     });
     expect(result.relevantFiles).toEqual(anthropicResponseFixture.affectedFiles);
     expect(result.fileContents).toMatchObject({
-      "src/parser.ts": "export const parser = true;\n",
-      "src/api/client.ts": "export const client = true;\n",
+      "src/parser.ts": "export const parser = true;\nconsole.log('debug');\n",
+      "src/api/client.ts": "export const client = (x: any) => x;\n",
     });
     expect(Number.isNaN(Date.parse(result.analyzedAt))).toBe(false);
 

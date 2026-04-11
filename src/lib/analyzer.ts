@@ -4,6 +4,7 @@ import path from "path";
 import { callModel } from "./ai";
 import { GitHubAPIError, GittributorError } from "./errors";
 import { debug, warn } from "./logger";
+import { analyzeFileStatic } from "./static-analyzer.js";
 import type { AnalysisResult, Issue, Repository } from "../types/index";
 
 interface ParsedAnalysisPayload {
@@ -35,11 +36,12 @@ const parsePositiveIntegerEnv = (name: string, fallback: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const MAX_ANALYZED_FILES = parsePositiveIntegerEnv("GITTRIBUTOR_ANALYZER_MAX_FILES", 3);
+const MAX_ANALYZED_FILES = parsePositiveIntegerEnv("GITTRIBUTOR_ANALYZER_MAX_FILES", 10);
 const MAX_LINES_PER_FILE = parsePositiveIntegerEnv("GITTRIBUTOR_ANALYZER_MAX_LINES_PER_FILE", 250);
 const MAX_REPO_SIZE_KB = 102400;
 const MAX_PERSISTED_FILE_CONTENT_BYTES = 50 * 1024;
-const ANALYZER_MAX_TOKENS = parsePositiveIntegerEnv("GITTRIBUTOR_ANALYZER_MAX_TOKENS", 700);
+const ANALYZER_MAX_TOKENS = parsePositiveIntegerEnv("GITTRIBUTOR_ANALYZER_MAX_TOKENS", 2048);
+const MAX_LLM_CALLS_PER_REPO = 3;
 const SUPPORTED_SOURCE_EXTENSION_PATTERN =
   /\.(ts|tsx|js|jsx|mjs|cjs|py|go|java|rb|rs|c|cpp|cs|php|swift|kt)$/;
 const FILE_MENTION_PATTERN =
@@ -164,7 +166,7 @@ function listSourceFiles(directoryPath: string): string[] {
   return discoveredFiles;
 }
 
-const PREFERRED_SOURCE_DIRS = ["src", "source", "lib", "app", "packages", "modules"];
+const PREFERRED_SOURCE_DIRS = ["src", "source", "lib", "app", "packages", "modules", "core", "server", "client", "api"];
 
 function getFileSizeScore(filePath: string): number {
   try {
@@ -215,9 +217,54 @@ function rankSourceFiles(repoPath: string, issue?: Issue): string[] {
         return rightScore - leftScore;
       }
 
-      return leftFile.localeCompare(rightFile);
+      return 0;
     })
     .slice(0, MAX_ANALYZED_FILES);
+}
+
+interface StaticPhaseResult {
+  filePath: string;
+  riskScore: number;
+}
+
+function runStaticAnalysisPhase(
+  repoPath: string,
+  filePaths: string[],
+): StaticPhaseResult[] {
+  const results: StaticPhaseResult[] = [];
+
+  for (const relativePath of filePaths) {
+    const absolutePath = path.join(repoPath, relativePath);
+    if (!existsSync(absolutePath)) {
+      continue;
+    }
+
+    try {
+      const content = readFileSync(absolutePath, "utf8");
+      const fileAnalysis = analyzeFileStatic(absolutePath, content);
+      if (fileAnalysis) {
+        results.push({
+          filePath: relativePath,
+          riskScore: fileAnalysis.maxSeverity,
+        });
+      }
+    } catch (e) {
+      debug("[analyzer] error: " + String(e));
+      throw e;
+    }
+  }
+
+  return results.sort((a, b) => b.riskScore - a.riskScore);
+}
+
+function listAllSourceFiles(repoPath: string): string[] {
+  let sourceFiles: string[] = [];
+  for (const dir of PREFERRED_SOURCE_DIRS) {
+    sourceFiles = listSourceFiles(path.join(repoPath, dir));
+    if (sourceFiles.length > 0) break;
+  }
+  const fallbackFiles = sourceFiles.length > 0 ? sourceFiles : listSourceFiles(repoPath);
+  return fallbackFiles.map((absolutePath) => path.relative(repoPath, absolutePath));
 }
 
 function truncateFileByLines(filePath: string): string {
@@ -306,6 +353,23 @@ function normalizeRelevantFiles(selectedFiles: string[], affectedFiles: string[]
   return normalizedAffectedFiles.length > 0 ? normalizedAffectedFiles : selectedFiles;
 }
 
+async function validateRelevantFiles(repoPath: string, relevantFiles: string[]): Promise<string[]> {
+  try {
+    const validatedRelevantFiles = relevantFiles.filter((filePath) =>
+      existsSync(path.join(repoPath, filePath))
+    );
+
+    if (validatedRelevantFiles.length !== relevantFiles.length) {
+      debug(`[analyzer] filtered ${relevantFiles.length - validatedRelevantFiles.length} relevant files not present in repo tree`);
+    }
+
+    return validatedRelevantFiles;
+  } catch (e) {
+    debug("[analyzer] error: " + String(e));
+    throw e;
+  }
+}
+
 async function persistAnalysisResult(analysis: AnalysisResult): Promise<void> {
   const outputDirectory = path.join(process.cwd(), ".gittributor");
   mkdirSync(outputDirectory, { recursive: true });
@@ -338,19 +402,20 @@ async function requestAnalysis(
   const parsedAnalysis = parseAnalysisPayload(responseText);
   debug(`[analyzer] requestAnalysis: repo=${repo.fullName}, confidence=${parsedAnalysis.confidence}`);
   const normalizedRelevantFiles = normalizeRelevantFiles(selectedFiles, parsedAnalysis.affectedFiles);
+  const validatedRelevantFiles = await validateRelevantFiles(repoPath, normalizedRelevantFiles);
 
   return {
     issueId: issue?.id ?? 0,
     repoFullName: repo.fullName,
-    relevantFiles: normalizedRelevantFiles,
+    relevantFiles: validatedRelevantFiles,
     suggestedApproach: parsedAnalysis.suggestedApproach,
     confidence: parsedAnalysis.confidence,
     analyzedAt: new Date().toISOString(),
     rootCause: parsedAnalysis.rootCause,
-    affectedFiles: normalizedRelevantFiles,
+    affectedFiles: validatedRelevantFiles,
     complexity: parsedAnalysis.complexity,
     fileContents: Object.fromEntries(
-      normalizedRelevantFiles.map((f) => [f, truncateFileByLines(path.join(repoPath, f))]),
+      validatedRelevantFiles.map((f) => [f, truncateFileByLines(path.join(repoPath, f))]),
     ),
   };
 }
@@ -396,8 +461,27 @@ export async function analyzeCodebase(repo: Repository, issue?: Issue): Promise<
       "1",
     ]);
 
+    const allFiles = listAllSourceFiles(tempRepoPath);
     const selectedFiles = rankSourceFiles(tempRepoPath, issue);
-    const analysis = await requestAnalysis(repo, issue, tempRepoPath, selectedFiles);
+
+    const staticResults = runStaticAnalysisPhase(tempRepoPath, allFiles);
+    debug(`[analyzer] Phase 1: static analysis found ${staticResults.length} files with risk scores`);
+    const topRiskFiles = staticResults
+      .sort((a, b) => b.riskScore - a.riskScore)
+      .slice(0, MAX_ANALYZED_FILES)
+      .map((r) => r.filePath);
+
+    const prioritized = new Set(topRiskFiles);
+    const remaining = selectedFiles.filter((f) => !prioritized.has(f));
+    const llmFiles = [...topRiskFiles, ...remaining].slice(0, MAX_ANALYZED_FILES);
+    debug(`[analyzer] Phase 2: LLM analyzing ${llmFiles.length} files`);
+
+    let llmCallsUsed = 0;
+    if (llmCallsUsed >= MAX_LLM_CALLS_PER_REPO) {
+      throw new Error(`LLM budget exhausted for ${repo.fullName}`);
+    }
+    llmCallsUsed++;
+    const analysis = await requestAnalysis(repo, issue, tempRepoPath, llmFiles);
     await persistAnalysisResult(analysis);
     return analysis;
   } finally {

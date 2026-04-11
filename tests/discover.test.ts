@@ -38,7 +38,7 @@ describe("discover command - TDD for trending repos", () => {
           historyPath: ".gittributor/history.json",
           maxPRsPerWeekPerRepo: 2,
           maxPRsPerHour: 3,
-          contributionTypes: ["docs", "test", "typo", "deps", "code"],
+          contributionTypes: ["bug-fix", "performance", "type-safety", "logic-error", "static-analysis"],
           dryRun: false,
         } as Config),
     }));

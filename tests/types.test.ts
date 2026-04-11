@@ -471,13 +471,13 @@ describe("union type guards", () => {
 describe("V2 Type System", () => {
   describe("ContributionType", () => {
     test("accepts valid contribution types", () => {
-      const types: ContributionType[] = ["typo", "docs", "deps", "test", "code"];
+      const types: ContributionType[] = ["bug-fix", "performance", "type-safety", "logic-error", "static-analysis"];
       expect(types).toHaveLength(5);
-      expect(types).toContain("typo");
-      expect(types).toContain("docs");
-      expect(types).toContain("deps");
-      expect(types).toContain("test");
-      expect(types).toContain("code");
+      expect(types).toContain("bug-fix");
+      expect(types).toContain("performance");
+      expect(types).toContain("type-safety");
+      expect(types).toContain("logic-error");
+      expect(types).toContain("static-analysis");
     });
   });
 
@@ -560,7 +560,7 @@ describe("V2 Type System", () => {
       const history: ContributionHistory = {
         id: "abc123",
         repo: "owner/name",
-        type: "docs",
+        type: "bug-fix",
         description: "Fix typos",
         filePath: "README.md",
         branchName: "fix-readme-typos",
@@ -578,7 +578,7 @@ describe("V2 Type System", () => {
       const history: ContributionHistory = {
         id: "def456",
         repo: "owner/repo",
-        type: "typo",
+        type: "type-safety",
         description: "Fix typo",
         filePath: "CONTRIBUTING.md",
         branchName: "fix-typo",
@@ -643,7 +643,7 @@ describe("V2 Type System", () => {
         repoListPath: "./repos.txt",
         maxPRsPerWeekPerRepo: 5,
         maxPRsPerHour: 3,
-        contributionTypes: ["docs", "typo", "deps"],
+        contributionTypes: ["bug-fix", "performance", "type-safety"],
         historyPath: "./history.json",
         dryRun: true,
       };
@@ -651,7 +651,7 @@ describe("V2 Type System", () => {
       expect(config.repoListPath).toBe("./repos.txt");
       expect(config.maxPRsPerWeekPerRepo).toBe(5);
       expect(config.maxPRsPerHour).toBe(3);
-      expect(config.contributionTypes).toEqual(["docs", "typo", "deps"]);
+      expect(config.contributionTypes).toEqual(["bug-fix", "performance", "type-safety"]);
       expect(config.historyPath).toBe("./history.json");
       expect(config.dryRun).toBe(true);
     });
@@ -669,7 +669,7 @@ describe("V2 Type System", () => {
         repoListPath: "./list.txt",
         maxPRsPerWeekPerRepo: 3,
         maxPRsPerHour: 2,
-        contributionTypes: ["code"],
+        contributionTypes: ["bug-fix"],
         historyPath: "./hist.json",
         dryRun: false,
       };

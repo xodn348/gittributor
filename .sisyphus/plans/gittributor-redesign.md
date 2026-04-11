@@ -198,7 +198,7 @@ Wave FINAL (4 parallel reviews, then user okay):
 
 ## TODOs
 
-- [ ] 1. Type System Updates — Extend types and bridge `Repository` ↔ `TrendingRepo`
+- [x] 1. Type System Updates — Extend types and bridge `Repository` ↔ `TrendingRepo`
 
   **What to do**:
   - Extend `ContributionType` in `src/types/index.ts:132` to add new types: `"bug-fix" | "performance" | "type-safety" | "logic-error" | "static-analysis"`
@@ -279,7 +279,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: `src/types/index.ts`
   - Pre-commit: `bun test`
 
-- [ ] 2. Config Updates — Add new `GITTRIBUTOR_*` environment variables
+- [x] 2. Config Updates — Add new `GITTRIBUTOR_*` environment variables
 
   **What to do**:
   - Add new env var support to config module for:
@@ -1113,7 +1113,7 @@ Wave FINAL (4 parallel reviews, then user okay):
   - Files: `src/commands/run.ts`, `src/lib/github.ts`
   - Pre-commit: `bun test`
 
-- [ ] 12. E2E Integration Test — Full pipeline smoke test
+- [x] 12. E2E Integration Test — Full pipeline smoke test
 
   **What to do**:
   - Create `tests/e2e/pipeline.test.ts` with an end-to-end integration test

@@ -164,11 +164,6 @@ const CONTRIBUTION_TYPE_PROMPTS: Record<string, string> = {
   "type-safety": "This is a TypeScript type safety improvement. Focus on adding proper type annotations, fixing type errors, and improving type inference. Ensure type safety without breaking existing functionality.",
   "logic-error": "This is a logic error fix. The code compiles/runs but produces incorrect results. Identify the flawed logic and correct it with clear reasoning.",
   "static-analysis": "This is a static analysis finding. Address linting warnings, code style issues, or potential bugs detected by static analysis tools.",
-  typo: "This is a typo correction. Fix spelling mistakes, grammatical errors, or formatting inconsistencies.",
-  docs: "This is a documentation improvement. Enhance code comments, README files, or user-facing documentation.",
-  deps: "This is a dependency update. Update package versions, add/remove dependencies, or upgrade API usage.",
-  test: "This is a test improvement. Add missing tests, improve test coverage, or fix existing test failures.",
-  code: "This is a general code improvement. Refactor for clarity, add missing functionality, or improve code quality.",
 };
 
 function buildContributionTypeSection(type?: ContributionType): string {

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { GuardrailCheck, ContributionType } from "../types/index.js";
+import { debug } from "./logger.js";
 
 export interface RateLimitState {
   hourly: Array<{ submittedAt: string; repo: string }>;
@@ -25,6 +26,7 @@ const readJsonSafely = <T>(path: string, defaultValue: T): T => {
     const content = readFileSync(path, "utf8");
     return JSON.parse(content) as T;
   } catch {
+    debug(`[guardrails] readJsonSafely failed for ${path}`);
     return defaultValue;
   }
 };

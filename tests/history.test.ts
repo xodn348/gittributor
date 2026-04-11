@@ -60,7 +60,7 @@ describe("history", () => {
         branchName: "test-branch",
         description: "New feature",
         filePath: "src/test.ts",
-        type: "docs" as const,
+        type: "bug-fix" as const,
         status: "pending" as const,
       };
 
@@ -94,7 +94,7 @@ describe("history", () => {
         branchName: "new-branch",
         description: "New issue",
         filePath: "src/new.ts",
-        type: "docs" as const,
+        type: "bug-fix" as const,
         status: "submitted" as const,
         submittedAt: "2024-01-02T00:00:00Z",
       };
@@ -194,7 +194,7 @@ describe("history", () => {
       const data = {
         contributions: [
           { id: "1", repo: "r1", branchName: "b1", description: "d1", filePath: "f1.ts", type: "fix" as const, status: "merged" as const, createdAt: "2024-01-01T00:00:00Z" },
-          { id: "2", repo: "r2", branchName: "b2", description: "d2", filePath: "f2.ts", type: "docs" as const, status: "merged" as const, createdAt: "2024-01-01T00:00:00Z" },
+          { id: "2", repo: "r2", branchName: "b2", description: "d2", filePath: "f2.ts", type: "bug-fix" as const, status: "merged" as const, createdAt: "2024-01-01T00:00:00Z" },
           { id: "3", repo: "r3", branchName: "b3", description: "d3", filePath: "f3.ts", type: "fix" as const, status: "closed" as const, createdAt: "2024-01-01T00:00:00Z" },
           { id: "4", repo: "r4", branchName: "b4", description: "d4", filePath: "f4.ts", type: "improvement" as const, status: "pending" as const, createdAt: "2024-01-01T00:00:00Z" },
         ],
@@ -205,7 +205,7 @@ describe("history", () => {
 
       expect(stats.total).toBe(4);
       expect((stats.byType as Record<string, number>)["fix"]).toBe(2);
-      expect(stats.byType.docs).toBe(1);
+      expect(stats.byType["bug-fix"]).toBe(1);
       expect((stats.byType as Record<string, number>)["improvement"]).toBe(1);
       expect(stats.byStatus.merged).toBe(2);
       expect(stats.byStatus.closed).toBe(1);

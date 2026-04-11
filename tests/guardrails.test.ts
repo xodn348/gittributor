@@ -117,7 +117,7 @@ describe("guardrails", () => {
       const result = await checkDuplicateContribution(
         "owner/repo",
         "src/index.ts",
-        "docs",
+        "performance",
         historyPath
       );
       expect(result.passed).toBe(true);

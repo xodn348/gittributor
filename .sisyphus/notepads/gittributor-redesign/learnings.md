@@ -358,3 +358,23 @@ No `{} as ContributionOpportunity` or other unsafe type casts remain in the code
 
 ### Commit
 `feat(run): add structured logging, LLM timeout, and graceful per-repo error handling`
+
+- 2026-04-11 audit: `run.ts` is wired to `../lib/analyzer.js`, but `analyzer.ts` still performs direct LLM-first analysis; `static-analyzer.ts` is present but not integrated, so plan-level 2-phase analysis is not actually implemented.
+- 2026-04-11 audit: `bun test` currently passes (328 pass, 4 skip, 0 fail), so the test suite is green even though several plan compliance items are still unmet.
+
+- 2026-04-11T11:35:10.805285+00:00: F3 QA confirmed `analyzeFileStatic` is the usable static-analysis export for manual verification, and clean files return `null` rather than a zero-risk object.
+
+- [2026-04-11 11:36 UTC] F3 QA: `static-analyzer.ts` exports `analyzeFileStatic`/`analyzeFiles`, so manual QA should adapt scenario scripts instead of expecting `runStaticAnalysisPhase`. Evidence saved to `.sisyphus/evidence/final-qa/f3-qa-results.txt`.
+
+## [2026-04-11] Final Verification Wave fixes
+- `src/lib/analyzer.ts` now defaults to 10 analyzed files and 2048 max tokens, and validates AI-returned `relevantFiles` against `GitHubClient.getFileTree()` before persisting file contents.
+- Analyzer/GitHub/discover silent catches were replaced with `debug(...)` logging so recovery paths leave diagnostics instead of swallowing errors.
+- Dynamic discovery is now API-first in both `discoverRepos()` and `runDiscoverCommand()`; YAML remains fallback-only when API returns no repos.
+- `ContributionType` runtime validation now matches the full union (`bug-fix`, `performance`, `type-safety`, `logic-error`, `static-analysis` included).
+- `bun test` after the fixes: 328 pass, 4 skip, 0 fail.
+
+## [2026-04-11T12:11:38.149651+00:00] Final verification fixes
+- `src/lib/analyzer.ts` now defaults to 10 analyzed files and 2048 max tokens, and validates AI-selected `relevantFiles` against a repo file tree before persisting output.
+- `src/commands/discover.ts` now runs dynamic GitHub API discovery first and only falls back to YAML when API discovery returns no repos.
+- `src/types/guards.ts` and `src/lib/config.ts` now accept the full `ContributionType` union (`bug-fix`, `performance`, `type-safety`, `logic-error`, `static-analysis`).
+- `bun test` after the hotfix pass: 328 pass, 4 skip, 0 fail.

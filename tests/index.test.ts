@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Config, Issue, PipelineState, Repository } from "../src/types";
-import type { ScoredIssue } from "../src/commands/analyze";
+import type { ScoredIssue } from "../src/lib/issue-discovery";
 import { acquireGlobalTestLock } from "./helpers/global-test-lock";
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -285,7 +285,7 @@ describe("runPipelineCommand oversized repository fallback", () => {
     repoListPath: "/tmp/repos.txt",
     maxPRsPerWeekPerRepo: 3,
     maxPRsPerHour: 1,
-    contributionTypes: ["bug-fix", "docs", "code"],
+    contributionTypes: ["bug-fix", "performance", "type-safety"],
     historyPath: "/tmp/history.json",
     dryRun: false,
   };

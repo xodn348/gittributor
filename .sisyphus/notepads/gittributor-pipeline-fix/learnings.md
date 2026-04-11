@@ -179,3 +179,9 @@
 - Keeping non-rate-limit command errors thrown from `searchIssues` preserves existing fail-fast behavior for real API/server/config failures.
 
 - [2026-04-05T16:59:05] `GitHubClient.searchIssues` should treat `HTTP 403` + `rate limit` (or exit code 1 + rate limit text) as a recoverable repository-level skip and return `[]` so pipeline iteration can continue.
+
+## 2026-04-11 Task: github-test-stale-assertions-audit
+### searchIssues spawn behavior re-check
+- Current src/lib/github.ts still performs one gh api repos/{repo}/issues/{number} call per unique issue via getIssueReactions; the removed call was only the extra PR-detection lookup, not the reactions lookup.
+- tests/github.test.ts line ~520 (repos/owner/repo/issues/8) is therefore not stale in the current code path; it matches the reactions request that still happens after the single-label search result is mapped.
+- Focused verification: bun test tests/github.test.ts currently passes with 17 pass, 0 fail.

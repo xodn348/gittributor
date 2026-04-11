@@ -17,7 +17,7 @@ const mockConfig = (overrides: Partial<Config> = {}): Config => ({
   repoListPath: "repos.yaml",
   maxPRsPerWeekPerRepo: 2,
   maxPRsPerHour: 3,
-  contributionTypes: ["docs", "typo", "deps", "test", "code"],
+  contributionTypes: ["bug-fix", "performance", "type-safety", "logic-error", "static-analysis"],
   historyPath: ".gittributor/history.json",
   dryRun: false,
   ...overrides,
@@ -121,24 +121,24 @@ describe("run command V2 pipeline", () => {
       expect(result.stats).toBe(true);
     });
 
-    it("parses --type=typo flag", async () => {
+    it("parses --type=type-safety flag", async () => {
       const { parseRunFlags } = await import("../src/commands/run.js");
-      const result = parseRunFlags(["--type=typo"]);
-      expect(result.type).toBe("typo");
+      const result = parseRunFlags(["--type=type-safety"]);
+      expect(result.type).toBe("type-safety");
     });
 
-    it("parses --type typo value style", async () => {
+    it("parses --type value style", async () => {
       const { parseRunFlags } = await import("../src/commands/run.js");
-      const result = parseRunFlags(["--type", "docs"]);
-      expect(result.type).toBe("docs");
+      const result = parseRunFlags(["--type", "static-analysis"]);
+      expect(result.type).toBe("static-analysis");
     });
 
     it("parses multiple flags together", async () => {
       const { parseRunFlags } = await import("../src/commands/run.js");
-      const result = parseRunFlags(["--dry-run", "--stats", "--type=typo"]);
+      const result = parseRunFlags(["--dry-run", "--stats", "--type=type-safety"]);
       expect(result.dryRun).toBe(true);
       expect(result.stats).toBe(true);
-      expect(result.type).toBe("typo");
+      expect(result.type).toBe("type-safety");
     });
 
     it("returns empty options for no flags", async () => {

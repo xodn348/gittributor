@@ -24,3 +24,7 @@
 - Added regression tests in `tests/github.test.ts` for three paths: HTTP 403 rate-limit fallback, exit-code-1 with rate-limit text fallback, and non-rate-limit error propagation.
 
 - [2026-04-05T16:59:05] Kept non-rate-limit errors propagating from `searchIssues`; only rate-limit signature is downgraded to warn-and-skip to preserve fail-fast behavior for real failures.
+
+## 2026-04-11 Task: github-test-stale-assertions-audit
+- Made no changes to tests/github.test.ts after inspection because the supposed stale gh api repos/owner/repo/issues/8 expectation still corresponds to the active reactions lookup in searchIssues.
+- Used focused verification (bun test tests/github.test.ts) to confirm the target file is already green before reporting broader unrelated suite failures from full bun test.

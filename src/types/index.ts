@@ -139,7 +139,7 @@ export interface Config {
 
 export type ReviewDecision = "approve" | "reject";
 
-export type ContributionType = "typo" | "docs" | "deps" | "test" | "code" | "bug-fix" | "performance" | "type-safety" | "logic-error" | "static-analysis";
+export type ContributionType = "bug-fix" | "performance" | "type-safety" | "logic-error" | "static-analysis";
 
 export interface GuardrailCheck {
   passed: boolean;
@@ -181,6 +181,12 @@ export interface StaticAnalysisResult {
   patternType: string;
   riskScore: number;
   phase: 1 | 2;
+  relevantFiles: string[];
+  suggestedApproach: string;
+  confidence: number;
+  rootCause?: string;
+  affectedFiles?: string[];
+  complexity?: string;
 }
 
 export function toTrendingRepo(repo: Repository): TrendingRepo {

@@ -17,7 +17,7 @@ const mockConfig = (overrides: Partial<Config> = {}): Config => ({
   repoListPath: "repos.yaml",
   maxPRsPerWeekPerRepo: 2,
   maxPRsPerHour: 3,
-  contributionTypes: ["docs", "typo", "deps", "test", "code"],
+  contributionTypes: ["bug-fix", "performance", "type-safety", "logic-error", "static-analysis"],
   historyPath: ".gittributor/history.json",
   dryRun: false,
   ...overrides,
@@ -74,6 +74,7 @@ const mockFixResult = (overrides: Partial<GeneratedFixResult> = {}): GeneratedFi
 const makeDeps = (overrides: Partial<RunDependencies> = {}): RunDependencies => ({
   loadConfig: async () => mockConfig(),
   discoverRepos: async () => [],
+  discoverIssues: async () => [],
   analyzeCodebase: async () => mockAnalysisResult(),
   generateFix: async () => mockFixResult(),
   reviewFix: async () => 0,

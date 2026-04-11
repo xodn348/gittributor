@@ -87,10 +87,16 @@ export async function getHistoryStats(historyPath: string): Promise<HistoryStats
   const contributions = await loadHistory(historyPath);
 
   const byType: Record<string, number> = {
-    fix: 0,
-    improvement: 0,
-    docs: 0,
-    refactor: 0,
+    "typo": 0,
+    "docs": 0,
+    "deps": 0,
+    "test": 0,
+    "code": 0,
+    "bug-fix": 0,
+    "performance": 0,
+    "type-safety": 0,
+    "logic-error": 0,
+    "static-analysis": 0,
   };
 
   const byStatus: Record<string, number> = {
@@ -102,8 +108,8 @@ export async function getHistoryStats(historyPath: string): Promise<HistoryStats
   };
 
   for (const contrib of contributions) {
-    if (contrib.type && byType[contrib.type] !== undefined) {
-      byType[contrib.type]++;
+    if (contrib.type) {
+      byType[contrib.type] = (byType[contrib.type] ?? 0) + 1;
     }
     if (contrib.status && byStatus[contrib.status] !== undefined) {
       byStatus[contrib.status]++;

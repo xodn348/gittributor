@@ -1,5 +1,5 @@
 import { join } from "path";
-import { isConfig, isContributionType } from "../types/guards";
+import { isConfig } from "../types/guards";
 import type { Config, ContributionType } from "../types";
 
 const DEFAULT_CONFIG: Omit<Config, "anthropicApiKey" | "oauthToken" | "openaiApiKey" | "openaiOauthToken"> = {
@@ -13,7 +13,7 @@ const DEFAULT_CONFIG: Omit<Config, "anthropicApiKey" | "oauthToken" | "openaiApi
   repoListPath: "repos.yaml",
   maxPRsPerWeekPerRepo: 2,
   maxPRsPerHour: 3,
-  contributionTypes: ["docs", "typo", "deps", "test", "code"],
+  contributionTypes: ["bug-fix", "performance", "type-safety", "logic-error", "static-analysis"],
   historyPath: ".gittributor/history.json",
   dryRun: false,
 };
@@ -51,11 +51,11 @@ const VALID_CONFIG_FIELDS = new Set<string>([
 ]);
 
 const VALID_CONTRIBUTION_TYPES = new Set<ContributionType>([
-  "docs",
-  "typo",
-  "deps",
-  "test",
-  "code",
+  "bug-fix",
+  "performance",
+  "type-safety",
+  "logic-error",
+  "static-analysis",
 ]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -166,9 +166,9 @@ const readConfigFile = async (
     if (!Array.isArray(parsed.contributionTypes)) {
       throw new ConfigError(`contributionTypes in ${configSource} must be an array`);
     }
-    if (!parsed.contributionTypes.every((langEntry) => isContributionType(langEntry))) {
+    if (!parsed.contributionTypes.every((entry): entry is ContributionType => typeof entry === "string" && VALID_CONTRIBUTION_TYPES.has(entry as ContributionType))) {
       throw new ConfigError(
-        `contributionTypes in ${configSource} must contain only: docs, typo, deps, test, code`,
+        `contributionTypes in ${configSource} must contain only: ${Array.from(VALID_CONTRIBUTION_TYPES).join(", ")}`,
       );
     }
     overrides.contributionTypes = parsed.contributionTypes;

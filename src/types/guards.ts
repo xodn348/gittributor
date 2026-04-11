@@ -23,6 +23,14 @@ const isStringArray = (value: unknown): value is string[] => {
   return Array.isArray(value) && value.every((element) => typeof element === "string");
 };
 
+const CONTRIBUTION_TYPES = new Set<ContributionType>([
+  "bug-fix",
+  "performance",
+  "type-safety",
+  "logic-error",
+  "static-analysis",
+]);
+
 export const isCommandName = (value: unknown): value is CommandName => {
   return (
     value === "discover" ||
@@ -184,13 +192,7 @@ export const isReviewDecision = (value: unknown): value is ReviewDecision => {
 };
 
 export const isContributionType = (value: unknown): value is ContributionType => {
-  return (
-    value === "typo" ||
-    value === "docs" ||
-    value === "deps" ||
-    value === "test" ||
-    value === "code"
-  );
+  return typeof value === "string" && CONTRIBUTION_TYPES.has(value as ContributionType);
 };
 
 export const isTrendingRepo = (value: unknown): value is TrendingRepo => {

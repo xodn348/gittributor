@@ -18,3 +18,7 @@
 - Full-suite pass count changed from prior baseline because new regression coverage was added in `tests/github.test.ts`.
 
 - [2026-04-05T16:59:05] `src/commands/run.ts` does not exist in this repo; equivalent pipeline loop lives in `src/index.ts` (`runPipelineCommand`).
+
+## 2026-04-11 Task: github-test-stale-assertions-audit
+- The requested cleanup conflicts with the live implementation: removing the repos/owner/repo/issues/8 mock/assertion would make the test inconsistent because searchIssues still fetches reactions for each unique issue.
+- Full bun test remains red for unrelated baseline problems outside tests/github.test.ts, including SyntaxError: Export named getFileTree not found and multiple suites making real gh search issues calls.

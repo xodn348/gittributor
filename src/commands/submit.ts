@@ -1,11 +1,11 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { loadState, saveState, transition, getStateData } from "../lib/state.js";
+import { loadState, saveState, transition } from "../lib/state.js";
 import { loadConfig } from "../lib/config.js";
 import { checkRateLimit, checkDuplicateContribution, checkRepoEligibility, recordSubmission } from "../lib/guardrails.js";
 import { saveContribution } from "../lib/history.js";
 import { checkContributingCompliance } from "../lib/contributing-checker.js";
-import { error as logError, warn, debug } from "../lib/logger.js";
+import { error as logError, warn } from "../lib/logger.js";
 import { GitHubAPIError } from "../lib/errors.js";
 import type { FixResult, PRSubmission, PipelineState, PipelineStatus, ContributionType } from "../types/index.js";
 
@@ -256,6 +256,11 @@ const createPRBody = (issueNumber: number, fix: FixResultWithChanges): string =>
     "",
     "## Why",
     summary,
+    "",
+    "## Verification",
+    "- [ ] Tests pass: `bun test`",
+    "- [ ] TypeScript compiles: `bun run typecheck`",
+    "- [ ] Linting passes: `bun run lint`",
   ].join("\n");
 };
 
@@ -353,7 +358,7 @@ export const submitApprovedFix = async (options: SubmitOptions = {}): Promise<nu
     }
 
     const primaryFilePath = fix.changes[0]?.file || "";
-    const contributionType: ContributionType = "code";
+    const contributionType: ContributionType = "bug-fix";
 
     const prSizeCheck = checkFixSize(fix);
     if (!prSizeCheck.passed) {

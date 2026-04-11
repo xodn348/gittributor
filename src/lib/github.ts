@@ -21,7 +21,6 @@ interface IssueSearchResult {
   updatedAt?: string;
   commentsCount?: number;
   assignees: Array<{ login: string } | string>;
-  pullRequest?: { url: string } | null;
 }
 
 interface IssueDetailsResult {
@@ -49,6 +48,7 @@ const ISSUE_SEARCH_RETRY_DELAYS_MS = [1000, 2000, 4000] as const;
 export class GitHubClient {
   async searchRepositories(opts: {
     minStars: number;
+    maxStars?: number;
     languages: string[];
     limit: number;
   }): Promise<Repository[]> {
@@ -92,7 +92,9 @@ export class GitHubClient {
       }
     }
 
-    return repositories.slice(0, opts.limit);
+    return repositories
+      .filter((r) => opts.maxStars === undefined || r.stars <= opts.maxStars)
+      .slice(0, opts.limit);
   }
 
   async searchIssues(
@@ -119,7 +121,7 @@ export class GitHubClient {
             "--state",
             "open",
             "--json",
-            "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
+            "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
             "--limit",
             String(opts.limit),
           ]);
@@ -150,7 +152,7 @@ export class GitHubClient {
       }
     }
 
-    return Promise.all(Array.from(uniqueIssues.values()).map(async (issue) => ({
+    return Array.from(uniqueIssues.values()).map((issue) => ({
       id: issue.number,
       number: issue.number,
       title: issue.title,
@@ -164,9 +166,9 @@ export class GitHubClient {
         typeof assignee === "string" ? assignee : assignee.login,
       ),
       commentsCount: issue.commentsCount ?? 0,
-      reactions: await this.getIssueReactions(repoFullName, issue.number),
-      pullRequest: issue.pullRequest !== undefined && issue.pullRequest !== null,
-    })));
+      reactions: 0,
+      pullRequest: issue.url.includes('/pull/'),
+    }));
   }
 
   async forkRepo(repoFullName: string): Promise<string> {
@@ -552,3 +554,7 @@ export const createPullRequestWithToken = async (
     throw new GitHubAPIError("createPullRequest returned invalid JSON");
   }
 };
+
+export async function getFileTree(repoFullName: string): Promise<string[]> {
+  return new GitHubClient().getFileTree(repoFullName);
+}

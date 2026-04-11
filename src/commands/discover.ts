@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { GitHubClient, GitHubAPIError } from "../lib/github.js";
@@ -79,6 +80,7 @@ export async function discoverReposFromAPI(
   try {
     fetchedRepos = await client.searchRepositories({
       minStars,
+      maxStars: discoveryConfig.maxStars,
       languages: [searchLanguage],
       limit: maxRepos,
     });
@@ -124,35 +126,14 @@ export async function discoverReposFromAPI(
     .sort((a, b) => b.score - a.score);
 
   const topCandidates = scored
-    .slice(0, 2)
+    .slice(0, discoveryConfig.maxReposPerRun)
     .map((s) => s.repo);
 
-  const enriched: TrendingRepo[] = [];
-
-  for (const candidate of topCandidates) {
-    try {
-      const repoInfo = await client.getRepoInfo(candidate.fullName);
-
-      if (repoInfo.hasOpenUserPR) {
-        debug(`Filtered out ${candidate.fullName}: user already has open PR`);
-        continue;
-      }
-
-      if (repoInfo.isArchived) {
-        debug(`Filtered out ${candidate.fullName}: archived`);
-        continue;
-      }
-
-      enriched.push({
-        ...candidate,
-        isArchived: repoInfo.isArchived,
-        hasContributing: false,
-      });
-    } catch (err) {
-      debug(`Failed to enrich ${candidate.fullName}: ${String(err)}`);
-      enriched.push(candidate);
-    }
-  }
+  const enriched: TrendingRepo[] = topCandidates.map((candidate) => ({
+    ...candidate,
+    isArchived: false,
+    hasContributing: false,
+  }));
 
   return enriched
     .sort((a, b) => scoreRepo(b) - scoreRepo(a))
@@ -166,19 +147,29 @@ export async function discoverRepos(
   const githubClient = isGitHubClient(clientOrOptions) ? clientOrOptions : new GitHubClient();
   const passedOptions = isGitHubClient(clientOrOptions) ? undefined : clientOrOptions;
 
+  const apiRepos = await discoverReposFromAPI(githubClient, passedOptions);
+  if (apiRepos.length > 0) {
+    return apiRepos;
+  }
+
   let yamlRepos: TrendingRepo[] = [];
   try {
     yamlRepos = await loadTrendingRepos(config);
-  } catch {
+  } catch (error) {
+    debug("[discover] error: " + String(error));
     yamlRepos = [];
   }
 
-  if (yamlRepos.length > 0) {
-    const filtered = filterRepoList(yamlRepos, {});
-    return await filterAndEnrichRepos(filtered, { language: "TypeScript", minStars: 1000, limit: 10 });
+  if (yamlRepos.length === 0) {
+    return [];
   }
 
-  return await discoverReposFromAPI(githubClient, passedOptions);
+  const normalizedOptions = normalizeOptions(passedOptions ?? {});
+  const filtered = filterRepoList(yamlRepos, {
+    languages: [normalizedOptions.language],
+    minStars: normalizedOptions.minStars,
+  });
+  return await filterAndEnrichRepos(filtered, normalizedOptions);
 }
 
 export interface DiscoverOptions {
@@ -294,8 +285,8 @@ const enrichRepoWithGitHubInfo = async (
       openIssues: repoInfo.stargazerCount > 0 ? repo.openIssues : 0,
       hasOpenPR: repoInfo.hasOpenUserPR,
     };
-  } catch {
-    debug(`Failed to enrich repo ${repo.fullName}, using defaults`);
+  } catch (error) {
+    debug(`Failed to enrich repo ${repo.fullName}, using defaults: ${String(error)}`);
     return repo;
   }
 };
@@ -418,11 +409,12 @@ const searchReposFallback = async (
   const query = buildDiscoverQuery({ language: options.language, minStars: options.minStars });
   info(`Searching repositories with query: ${query}`);
 
-  const repositories = await githubClient.searchRepositories({
-    minStars: options.minStars,
-    languages: [options.language],
-    limit: options.limit,
-  });
+      const repositories = await githubClient.searchRepositories({
+        minStars: options.minStars,
+        maxStars: discoveryConfig.maxStars,
+        languages: [options.language],
+        limit: options.limit,
+      });
 
   return repositories;
 };
@@ -433,25 +425,28 @@ export async function runDiscoverCommand(options: DiscoverOptions): Promise<Tren
 
   let trendingRepos: TrendingRepo[] = [];
 
-  const yamlRepos = await loadTrendingRepos(config);
+  const repoListPath = config.repoListPath || "repos.yaml";
+  const isDefaultYamlPath = repoListPath === "repos.yaml";
+  const yamlFileExists = existsSync(repoListPath);
+  const githubClient = new GitHubClient();
+  const apiResults = await discoverReposFromAPI(githubClient, normalizedOptions);
 
-  if (yamlRepos.length > 0) {
-    const filtered = filterRepoList(yamlRepos, {
-      languages: normalizedOptions.language ? [normalizedOptions.language] : undefined,
-      minStars: normalizedOptions.minStars,
-    });
-    info(`Filtered curated repos to ${filtered.length} by language/minStars`);
-
-    trendingRepos = await filterAndEnrichRepos(filtered, normalizedOptions);
+  if (apiResults.length > 0) {
+    info("Using dynamic discovery results");
+    trendingRepos = apiResults;
   } else {
-    info("No YAML repo list found, using dynamic discovery");
-    const githubClient = new GitHubClient();
-    const apiResults = await discoverRepos(githubClient);
+    const yamlRepos = isDefaultYamlPath && !yamlFileExists ? [] : await loadTrendingRepos(config);
 
-    if (apiResults.length > 0) {
-      trendingRepos = apiResults;
+    if (yamlRepos.length > 0) {
+      const filtered = filterRepoList(yamlRepos, {
+        languages: normalizedOptions.language ? [normalizedOptions.language] : undefined,
+        minStars: normalizedOptions.minStars,
+      });
+      info(`Filtered curated repos to ${filtered.length} by language/minStars`);
+
+      trendingRepos = await filterAndEnrichRepos(filtered, normalizedOptions);
     } else {
-      info("No repos from API, falling back to search with options");
+      info("No repos from API or YAML fallback, using search with options");
       const searchResults = await searchReposFallback(normalizedOptions);
 
       trendingRepos = await filterAndEnrichRepos(
