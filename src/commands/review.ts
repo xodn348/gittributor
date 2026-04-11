@@ -220,6 +220,11 @@ const CONTRIBUTION_TYPE_LABELS: Record<ContributionType, string> = {
   deps: "Deps",
   test: "Test",
   code: "Code",
+  "bug-fix": "Bug Fix",
+  performance: "Performance",
+  "type-safety": "Type Safety",
+  "logic-error": "Logic Error",
+  "static-analysis": "Static Analysis",
 };
 
 interface ContributionReviewIO {

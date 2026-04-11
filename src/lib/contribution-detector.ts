@@ -449,6 +449,11 @@ export function calculateMergeProbability(
     deps: 0.7,
     test: 0.75,
     code: 0.6,
+    "bug-fix": 0.7,
+    performance: 0.65,
+    "type-safety": 0.75,
+    "logic-error": 0.7,
+    "static-analysis": 0.65,
   };
 
   score += typeWeights[opportunity.type] * 0.3;
