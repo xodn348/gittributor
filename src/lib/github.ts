@@ -21,6 +21,7 @@ interface IssueSearchResult {
   updatedAt?: string;
   commentsCount?: number;
   assignees: Array<{ login: string } | string>;
+  pullRequest?: { url: string } | null;
 }
 
 interface IssueDetailsResult {
@@ -118,7 +119,7 @@ export class GitHubClient {
             "--state",
             "open",
             "--json",
-            "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
+            "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
             "--limit",
             String(opts.limit),
           ]);
@@ -164,6 +165,7 @@ export class GitHubClient {
       ),
       commentsCount: issue.commentsCount ?? 0,
       reactions: await this.getIssueReactions(repoFullName, issue.number),
+      pullRequest: issue.pullRequest !== undefined && issue.pullRequest !== null,
     })));
   }
 

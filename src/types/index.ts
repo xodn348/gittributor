@@ -26,6 +26,13 @@ export interface Issue {
   assignees: string[];
   reactions?: number;
   commentsCount?: number;
+  pullRequest?: boolean;
+}
+
+export interface ScoredIssue extends Issue {
+  approachabilityScore: number;
+  impactScore: number;
+  totalScore: number;
 }
 
 export interface AnalysisResult {

@@ -6,6 +6,8 @@ import { GitHubClient } from "../lib/github.js";
 import { debug, info } from "../lib/logger.js";
 import { setStateData } from "../lib/state.js";
 import { checkRepoEligibility } from "../lib/guardrails.js";
+import { discoveryConfig } from "../lib/config.js";
+import { discoverIssues as discoverIssuesCore, type ScoredIssue } from "../lib/issue-discovery.js";
 import {
   detectTypos,
   detectDocs,
@@ -16,129 +18,11 @@ import {
   sortOpportunities,
   cloneRepoShallow,
 } from "../lib/contribution-detector.js";
-import type { Issue, Repository, TrendingRepo, ContributionOpportunity } from "../types/index.js";
+import type { Repository, TrendingRepo, ContributionOpportunity } from "../types/index.js";
 
-const ISSUE_LABELS = ["good first issue", "good-first-issue", "beginner", "help wanted"];
-const ISSUE_SEARCH_LIMIT = 50;
-const NINETY_DAYS_IN_MS = 90 * 24 * 60 * 60 * 1000;
+export type { ScoredIssue };
+
 const MAX_REPOS = 10;
-
-const REPRODUCTION_PATTERNS = [
-  /steps to reproduce/i,
-  /reproduc(e|ible|tion)/i,
-  /how to reproduce/i,
-  /minimal repro/i,
-];
-
-const SMALL_SCOPE_PATTERNS = [
-  /small scope/i,
-  /narrow scope/i,
-  /limited scope/i,
-  /single module/i,
-  /one module/i,
-  /single component/i,
-  /one component/i,
-  /single file/i,
-  /one file/i,
-  /in\s+[\w./-]+\.(ts|tsx|js|jsx|py|go|java|rb|rs|c|cpp|cs)/i,
-];
-
-const TEST_FILE_PATTERNS = [
-  /test file/i,
-  /\btests?\b/i,
-  /\bspec\b/i,
-  /\.(test|spec)\.[\w]+/i,
-];
-
-const SINGLE_FILE_FIX_PATTERNS = [
-  /single[-\s]file/i,
-  /one[-\s]file/i,
-  /only\s+[\w./-]+\.(ts|tsx|js|jsx|py|go|java|rb|rs|c|cpp|cs)/i,
-  /just\s+[\w./-]+\.(ts|tsx|js|jsx|py|go|java|rb|rs|c|cpp|cs)/i,
-];
-
-const IMPACT_PATTERNS = [
-  /\bcrash(es|ing)?\b/i,
-  /\bcritical\b/i,
-  /\bsecurity\b/i,
-  /\bvulnerabilit/i,
-  /\bregression\b/i,
-  /\bdata\s+loss\b/i,
-  /\bcorrupt/i,
-  /\bbreaking\s+change\b/i,
-  /\bproduction\b/i,
-  /\bsevere\b/i,
-];
-
-type IssueWithOptionalUpdatedAt = Issue & {
-  updatedAt?: string;
-};
-
-export type ScoredIssue = Issue & {
-  approachabilityScore: number;
-  impactScore: number;
-  totalScore: number;
-};
-
-const hasPatternMatch = (source: string, patterns: RegExp[]): boolean => {
-  return patterns.some((pattern) => pattern.test(source));
-};
-
-const getIssueUpdatedAt = (issue: Issue): string => {
-  const withOptionalUpdatedAt = issue as IssueWithOptionalUpdatedAt;
-  return withOptionalUpdatedAt.updatedAt ?? issue.createdAt;
-};
-
-const isNotStale = (issue: Issue): boolean => {
-  const updatedAtMs = Date.parse(getIssueUpdatedAt(issue));
-
-  if (!Number.isFinite(updatedAtMs)) {
-    return false;
-  }
-
-  return Date.now() - updatedAtMs <= NINETY_DAYS_IN_MS;
-};
-
-const hasClearDescription = (issue: Issue): boolean => {
-  const body = issue.body ?? "";
-  return body.trim().length > 20;
-};
-
-const scoreApproachability = (issue: Issue): number => {
-  const body = issue.body ?? "";
-  let score = 0;
-
-  if (hasPatternMatch(body, REPRODUCTION_PATTERNS)) {
-    score += 2;
-  }
-
-  if (hasPatternMatch(body, SMALL_SCOPE_PATTERNS)) {
-    score += 2;
-  }
-
-  if (hasPatternMatch(body, TEST_FILE_PATTERNS)) {
-    score += 1;
-  }
-
-  if (hasPatternMatch(body, SINGLE_FILE_FIX_PATTERNS)) {
-    score += 3;
-  }
-
-  return score;
-};
-
-const scoreImpact = (issue: Issue): number => {
-  const text = `${issue.title}\n${issue.body ?? ""}`;
-  let score = 0;
-
-  for (const pattern of IMPACT_PATTERNS) {
-    if (pattern.test(text)) {
-      score += 3;
-    }
-  }
-
-  return score;
-};
 
 const persistIssues = async (issues: ScoredIssue[]): Promise<void> => {
   const outputDirectory = join(process.cwd(), ".gittributor");
@@ -200,39 +84,7 @@ export function printIssueProposalTable(repo: Repository, issues: ScoredIssue[])
 
 export async function discoverIssues(repo: Repository): Promise<ScoredIssue[]> {
   info(`Discovering issues for ${repo.fullName}...`);
-  const githubClient = new GitHubClient();
-  const issues = await githubClient.searchIssues(repo.fullName, {
-    labels: ISSUE_LABELS,
-    limit: ISSUE_SEARCH_LIMIT,
-  });
-
-  const unassignedIssues = issues.filter((issue) => issue.assignees.length === 0);
-  const notStaleIssues = unassignedIssues.filter((issue) => isNotStale(issue));
-  const filtered = notStaleIssues.filter((issue) => hasClearDescription(issue));
-
-  debug(
-    `Filter stats for ${repo.fullName}: ${issues.length} fetched → ${unassignedIssues.length} unassigned → ${notStaleIssues.length} not stale → ${filtered.length} clear description/actionable`,
-  );
-
-  const scored = filtered
-    .map((issue) => {
-      const approachabilityScore = scoreApproachability(issue);
-      const impactScore = scoreImpact(issue);
-      return {
-        ...issue,
-        approachabilityScore,
-        impactScore,
-        totalScore: approachabilityScore + impactScore,
-      };
-    })
-    .sort((left, right) => {
-      if (right.totalScore !== left.totalScore) {
-        return right.totalScore - left.totalScore;
-      }
-
-      return left.number - right.number;
-    });
-
+  const scored = await discoverIssuesCore(repo);
   await persistIssues(scored);
   printProposalTable(scored);
   debug(`Discovered ${scored.length} actionable issue(s) for ${repo.fullName}.`);
@@ -254,7 +106,7 @@ export async function analyzeSingleRepo(repo: TrendingRepo): Promise<Contributio
     const readmePath = join(tempPath, "README.md");
     const readmeContent = existsSync(readmePath) ? readFileSync(readmePath, "utf8") : "";
 
-    const filePaths = existsSync(tempPath) ? 
+    const filePaths = existsSync(tempPath) ?
       [...readdirSync(tempPath).map((f: string) => join(tempPath, f))] : [];
 
     const typoResults = detectTypos(readmeContent);
@@ -336,9 +188,10 @@ export async function analyzeSingleRepo(repo: TrendingRepo): Promise<Contributio
     }
 
     const githubClient = new GitHubClient();
+    const labels = discoveryConfig.issueLabels.split(",").map((l) => l.trim()).filter(Boolean);
     const issues = await githubClient.searchIssues(repo.fullName, {
-      labels: ISSUE_LABELS,
-      limit: ISSUE_SEARCH_LIMIT,
+      labels,
+      limit: 50,
     });
     const codeResults = await detectCode(repo, issues);
     for (const code of codeResults) {

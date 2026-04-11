@@ -88,13 +88,13 @@ describe("discoverIssues", () => {
     expect(issues[0]?.number).toBe(2);
   });
 
-  it("keeps issues updated within 90 days and filters ones older than 90 days", async () => {
-    const eightyNineDaysAgo = new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000).toISOString();
-    const ninetyOneDaysAgo = new Date(now.getTime() - 91 * 24 * 60 * 60 * 1000).toISOString();
+  it("keeps issues updated within 180 days and filters ones older than 180 days", async () => {
+    const withinWindow = new Date(now.getTime() - 170 * 24 * 60 * 60 * 1000).toISOString();
+    const outsideWindow = new Date(now.getTime() - 200 * 24 * 60 * 60 * 1000).toISOString();
 
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
-      makeIssue({ id: 30, number: 30, updatedAt: eightyNineDaysAgo }),
-      makeIssue({ id: 31, number: 31, updatedAt: ninetyOneDaysAgo }),
+      makeIssue({ id: 30, number: 30, updatedAt: withinWindow }),
+      makeIssue({ id: 31, number: 31, updatedAt: outsideWindow }),
     ]);
 
     const issues = await discoverIssues(repoFixture);
@@ -102,17 +102,15 @@ describe("discoverIssues", () => {
     expect(issues.map((issue) => issue.number)).toEqual([30]);
   });
 
-  it("keeps bodies longer than 20 chars and filters shorter or empty bodies", async () => {
+  it("does not filter issues by body length (body length no longer a filter criterion)", async () => {
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
       makeIssue({ id: 40, number: 40, body: "123456789012345678901" }),
-      makeIssue({ id: 41, number: 41, body: "12345678901234567890" }),
-      makeIssue({ id: 42, number: 42, body: "" }),
-      makeIssue({ id: 43, number: 43, body: "     " }),
+      makeIssue({ id: 41, number: 41, body: "short" }),
     ]);
 
     const issues = await discoverIssues(repoFixture);
 
-    expect(issues.map((issue) => issue.number)).toEqual([40]);
+    expect(issues.map((issue) => issue.number)).toEqual([40, 41]);
   });
 
   it("sorts by approachability score descending", async () => {
@@ -159,33 +157,38 @@ describe("discoverIssues", () => {
 
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({
-      approachabilityScore: 4,
-      impactScore: 0,
+      approachabilityScore: 60,
+      impactScore: 20,
     });
     expect(issues[0]?.totalScore).toBe(
       issues[0]!.approachabilityScore + issues[0]!.impactScore,
     );
   });
 
-  it("still returns scored issues without codebase tree enrichment", async () => {
+  it("filters out issues with 10+ comments", async () => {
     spyOn(GitHubClient.prototype, "searchIssues").mockResolvedValue([
       makeIssue({
         id: 21,
         number: 21,
-        title: "Auth issue",
-        body: "Please check auth flow with clear reproduction steps in src/auth/service.ts.",
-        reactions: 3,
+        title: "High traffic bug",
+        body: "Steps to reproduce the critical production crash.",
+        labels: ["bug"],
+        commentsCount: 12,
+        updatedAt: "2026-03-30T00:00:00.000Z",
+      }),
+      makeIssue({
+        id: 22,
+        number: 22,
+        title: "Small bug",
+        body: "Steps to reproduce a minor issue.",
+        labels: ["bug"],
+        commentsCount: 0,
         updatedAt: "2026-03-30T00:00:00.000Z",
       }),
     ]);
     const issues = await discoverIssues(repoFixture);
 
-    expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatchObject({
-      approachabilityScore: 4,
-      impactScore: 0,
-      totalScore: 4,
-    });
+    expect(issues.map((i) => i.number)).toEqual([22]);
   });
 
   it("returns empty array when no issues pass filters", async () => {
@@ -199,7 +202,7 @@ describe("discoverIssues", () => {
       makeIssue({
         id: 3,
         number: 3,
-        body: "Too short",
+        commentsCount: 15,
       }),
     ]);
 
