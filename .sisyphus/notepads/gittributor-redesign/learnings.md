@@ -97,3 +97,73 @@
 - Tests updated to mock `analyzeCodebase` and `generateFix` instead of old `analyzeRepositories` and `routeContribution`
 - Old tests for type-filtering and `routeContribution` removed (pipeline architecture changed)
 - Tests: 358 pass, 3 skip, 0 fail (up from 357 pass, 3 skip, 4 fail baseline)
+
+## [2026-04-11] Task 4: Wire analyzer.ts into Pipeline + Analysis Enhancement
+
+### Key Implementation Details
+- `RunDependencies` in `src/commands/run.ts` now has `analyzeCodebase` and `generateFix` (old `analyzeRepositories` and `routeContribution` removed)
+- Pipeline flow: `discoverRepos` → `analyzeCodebase` (per repo) → `generateFix` (per repo) → `reviewContributions` → `submitApprovedFix`
+- `analyzeCodebase(repo: Repository, issue?: Issue)` — issue is now optional for free-form discovery mode
+- When `issue` is undefined, `buildAnalysisPrompt()` generates a free-form discovery prompt asking LLM to find bugs, security issues, type errors, performance problems
+- `PREFERRED_SOURCE_DIRS` expanded: added `"app"`, `"packages"`, `"modules"` to existing `["src", "source", "lib"]`
+- `rankSourceFiles()` improved: after preferred dir priority, ranks by file size (prefer medium 200-2000 lines: score 1.0; <50 lines: 0.3; 2000-5000: 0.6; >5000: 0.2)
+- `FixResult` type conflict: `fix-generator.ts` exports `FixResult` with `{ changes, explanation, confidence }` but `types/index.ts` has a different `FixResult`. Resolved by importing as `GeneratedFixResult` in run.ts
+- `generateFix` requires an `Issue` parameter — in free-form mode, create a synthetic issue with `id: 0, number: 0, title: "Free-form analysis", body: analysis.suggestedApproach`
+- Dry-run mode: calls `analyzeCodebase` (to show what would be analyzed) but skips `generateFix`/review/submit
+- The orchestrator skips `generateFix` in dry-run mode to avoid expensive LLM calls
+
+### Type Compatibility Issue
+- `FixResult` from `src/lib/fix-generator.js` has `{ changes: FixChange[], explanation: string, confidence: number }`
+- `FixResult` from `src/types/index.js` has `{ issueId, repoFullName, patch, explanation, testsPass, confidence, generatedAt }`
+- These are different interfaces with the same name — imported `GeneratedFixResult` from fix-generator.js in run.ts
+
+### Test Updates
+- `tests/run.test.ts` updated to use new `RunDependencies` interface with `analyzeCodebase` and `generateFix`
+- `makeDeps` now provides `analyzeCodebase: async () => mockAnalysisResult()` and `generateFix: async () => mockFixResult()`
+- Added `mockAnalysisResult()` and `mockFixResult()` helper factories
+- Test names updated to match new pipeline: "analyzeCodebase" instead of "analyzeRepositories", "generateFix" instead of "routeContribution"
+- "filters opportunities by type" test renamed to "passes typeFilter to review" — verifies `--type` flag is passed to review stage (type filtering no longer done at analysis stage in new pipeline)
+- All 15 tests pass: 361 pass, 3 skip, 0 fail
+
+### Changes Summary
+- `src/lib/analyzer.ts`: `issue` optional, free-form discovery, expanded PREFERRED_SOURCE_DIRS, size-based ranking
+- `src/commands/run.ts`: new RunDependencies, new pipeline (analyzeCodebase → generateFix), dry-run handles analyze-only
+- `tests/run.test.ts`: updated to match new interface, added 3 missing tests
+
+## [2026-04-11] Task 6: Static Analysis Module
+
+### Key Implementation Details
+- Created `src/lib/static-analyzer.ts` - AST-free, pattern-based static analysis module
+- Detects patterns via regex (no AST parsers): empty catch blocks, console.log, any type, unsafe chains (TS/JS), bare except, mutable defaults (Python)
+- Exports `analyzeFileStatic()` for single file analysis and `analyzeFiles()` for batch analysis
+- Uses `discoveryConfig.staticAnalysisEnabled` to check if analysis is enabled (via `GITTRIBUTOR_STATIC_ANALYSIS_ENABLED`)
+- Excludes test files (*.test.ts, *.spec.ts, test_*.py)
+- Skips files >500 lines with warning log
+- Skips console.log detection in CLI scripts (files with shebang `#!`)
+- Returns `AnalysisResult` compatible shape with `issueId: 0` for static analysis (no linked issue)
+
+### Risk Scoring
+- NPE/unsafe-chain: 1.0 (highest priority)
+- Empty catch / bare except: 0.9
+- Mutable default: 0.8
+- Any type: 0.7
+- Console.log: 0.5 (lowest)
+- Files with risk > 0.6 are included in `relevantFiles`
+
+### Test Coverage
+- Created `tests/static-analyzer.test.ts` with 18 tests covering:
+  - Pattern detection (empty catch, console.log, any type, unsafe chains, bare except, mutable defaults)
+  - Test file exclusion
+  - Line count limits
+  - CLI script shebang detection
+  - AnalysisResult shape verification
+- All 18 tests pass
+
+### Pre-existing Test Failures
+- Some tests in `github.test.ts` fail due to changes from previous tasks (adding `pullRequest` field to gh json output)
+- These failures exist with or without this task's changes
+- Static analyzer tests (18) all pass independently
+
+### Notes
+- Bun LSP complains about assignment-in-expression patterns for while loops
+- Solution: Use separate `match = pattern.exec()` call before while loop condition
