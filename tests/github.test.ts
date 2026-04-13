@@ -129,21 +129,6 @@ describe("GitHubClient", () => {
         createMockProcess({
           stdout: JSON.stringify([]),
         }),
-      )
-      .mockReturnValueOnce(
-        createMockProcess({
-          stdout: JSON.stringify({
-            reactions: {
-              total_count: 7,
-              "+1": 4,
-              laugh: 0,
-              hooray: 3,
-              heart: 0,
-              rocket: 0,
-              eyes: 0,
-            },
-          }),
-        }),
       );
 
     const client = new GitHubClient();
@@ -161,7 +146,6 @@ describe("GitHubClient", () => {
       labels: ["good first issue", "bug"],
       updatedAt: "2026-04-01T00:00:00Z",
       assignees: ["alice", "bob"],
-      reactions: 7,
       commentsCount: 4,
     });
 
@@ -271,12 +255,7 @@ describe("GitHubClient", () => {
             },
           ]),
         }),
-      )
-      .mockReturnValueOnce(
-        createMockProcess({
-          stdout: JSON.stringify({ reactions: { total_count: 0 } }),
-        }),
-      );
+    );
 
     const client = new GitHubClient();
     const result = await client.searchIssues("owner/repo", {
@@ -474,21 +453,7 @@ describe("GitHubClient", () => {
             },
           ]),
         }),
-      )
-      .mockReturnValueOnce(
-        createMockProcess({
-          stdout: JSON.stringify({
-            reactions: {
-              "+1": 0,
-              laugh: 0,
-              hooray: 0,
-              heart: 0,
-              rocket: 0,
-              eyes: 0,
-            },
-          }),
-        }),
-      );
+    );
 
     const client = new GitHubClient();
     const opts = {
@@ -514,11 +479,6 @@ describe("GitHubClient", () => {
         "--limit",
         "2",
       ],
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect(spawnMock).toHaveBeenNthCalledWith(2, {
-      cmd: ["gh", "api", "repos/owner/repo/issues/8"],
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -557,20 +517,6 @@ describe("GitHubClient", () => {
             },
           ]),
         }),
-      )
-      .mockReturnValueOnce(
-        createMockProcess({
-          stdout: JSON.stringify({
-            reactions: {
-              "+1": 0,
-              laugh: 0,
-              hooray: 0,
-              heart: 0,
-              rocket: 0,
-              eyes: 0,
-            },
-          }),
-        }),
       );
 
     const client = new GitHubClient();
@@ -581,7 +527,7 @@ describe("GitHubClient", () => {
     const result = await client.searchIssues("owner/repo", opts);
 
     expect(result).toHaveLength(1);
-    expect(spawnMock).toHaveBeenCalledTimes(3);
+    expect(spawnMock).toHaveBeenCalledTimes(2);
     expect(spawnMock).toHaveBeenNthCalledWith(1, {
       cmd: [
         "gh",
@@ -620,17 +566,6 @@ describe("GitHubClient", () => {
       stdout: "pipe",
       stderr: "pipe",
     });
-
-
-    const reactionCalls = spawnMock.mock.calls.filter((call) => {
-      const firstArg = call[0];
-      if (typeof firstArg !== "object" || firstArg === null || !("cmd" in firstArg)) {
-        return false;
-      }
-      const cmd = firstArg.cmd;
-      return Array.isArray(cmd) && cmd[0] === "gh" && cmd[1] === "api";
-    });
-    expect(reactionCalls).toHaveLength(1);
   });
 
   it("searchIssues falls back to comments-only metrics when issue detail lookup fails", async () => {
@@ -650,13 +585,7 @@ describe("GitHubClient", () => {
             },
           ]),
         }),
-      )
-      .mockReturnValueOnce(
-        createMockProcess({
-          stderr: "boom",
-          exitCode: 1,
-        }),
-      );
+    );
 
     const client = new GitHubClient();
     const result = await client.searchIssues("owner/repo", {
@@ -667,7 +596,6 @@ describe("GitHubClient", () => {
     expect(result[0]).toMatchObject({
       number: 7,
       commentsCount: 3,
-      reactions: 0,
     });
   });
 
