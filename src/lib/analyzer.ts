@@ -473,7 +473,7 @@ export async function analyzeCodebase(repo: Repository, issue?: Issue): Promise<
 
     const prioritized = new Set(topRiskFiles);
     const remaining = selectedFiles.filter((f) => !prioritized.has(f));
-    const llmFiles = [...topRiskFiles, ...remaining].slice(0, MAX_ANALYZED_FILES);
+    const llmFiles = [...new Set([...topRiskFiles, ...remaining])].slice(0, MAX_ANALYZED_FILES);
     debug(`[analyzer] Phase 2: LLM analyzing ${llmFiles.length} files`);
 
     let llmCallsUsed = 0;

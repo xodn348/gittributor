@@ -121,7 +121,7 @@ export class GitHubClient {
             "--state",
             "open",
             "--json",
-            "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees",
+            "number,title,body,url,labels,createdAt,updatedAt,commentsCount,assignees,pullRequest",
             "--limit",
             String(opts.limit),
           ]);
