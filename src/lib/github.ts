@@ -23,12 +23,6 @@ interface IssueSearchResult {
   assignees: Array<{ login: string } | string>;
 }
 
-interface IssueDetailsResult {
-  reactions?: {
-    total_count?: number;
-  };
-}
-
 export { GitHubAPIError };
 
 const isIssueSearchRateLimitError = (error: unknown): error is GitHubAPIError => {
@@ -236,19 +230,6 @@ export class GitHubClient {
     return treePayload.tree
       .filter((fileEntry) => fileEntry.type === "blob")
       .map((fileEntry) => fileEntry.path);
-  }
-
-  private async getIssueReactions(repoFullName: string, issueNumber: number): Promise<number> {
-    try {
-      const payload = await this.runCommand(["gh", "api", `repos/${repoFullName}/issues/${issueNumber}`]);
-      const issueDetails = this.parseJSON<IssueDetailsResult>(payload, "getIssueReactions");
-      return issueDetails.reactions?.total_count ?? 0;
-    } catch (error) {
-      debug(
-        `Skipping reactions lookup for ${repoFullName}#${issueNumber}: ${error instanceof Error ? error.message : "unknown error"}`,
-      );
-      return 0;
-    }
   }
 
   private async runCommand(cmd: string[]): Promise<string> {
