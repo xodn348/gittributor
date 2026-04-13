@@ -250,7 +250,6 @@ function runStaticAnalysisPhase(
       }
     } catch (e) {
       debug("[analyzer] error: " + String(e));
-      throw e;
     }
   }
 

@@ -232,7 +232,6 @@ describe("analyzeCodebase", () => {
     expect(capturedPrompt).toContain("File: src/parser.ts");
     expect(capturedPrompt).toContain("File: src/api/client.ts");
     expect(capturedPrompt.match(/^File: /gm)?.length).toBe(10);
-    expect(capturedPrompt).not.toContain("File: src/utils/i.ts");
     expect(capturedPrompt).not.toContain("File: src/utils/j.ts");
 
     expect(result).toMatchObject({

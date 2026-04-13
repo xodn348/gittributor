@@ -464,9 +464,10 @@ export async function runOrchestrator(
           updatedAt: new Date().toISOString(),
           description: tr.description,
         };
+        const realIssue = topIssues[i];
         const syntheticIssue: Issue = {
-          id: 0,
-          number: 0,
+          id: realIssue?.id ?? 0,
+          number: realIssue?.number ?? 0,
           title: "Free-form analysis",
           body: analysis.suggestedApproach,
           url: `https://github.com/${tr.fullName}`,
@@ -475,7 +476,7 @@ export async function runOrchestrator(
           createdAt: new Date().toISOString(),
           assignees: [],
         };
-        const issueToUse: Issue = topIssues[i] ?? syntheticIssue;
+        const issueToUse: Issue = realIssue ?? syntheticIssue;
         try {
           const fixResult = await generateFix(analysis, issueToUse, repo);
           successfulFixes.push({ result: fixResult, repo, analysis, issue: issueToUse });

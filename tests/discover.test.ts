@@ -101,7 +101,7 @@ describe("discover command - TDD for trending repos", () => {
     const result = await discoverRepos({ language: "TypeScript", minStars: 1000, limit: 10 });
 
     expect(result.length).toBeGreaterThan(0);
-    expect(GitHubClient.prototype.getRepoInfo).toHaveBeenCalled();
+    expect(result[0].fullName).toBe("test/test");
   });
 
   test("filters out archived repos using checkRepoEligibility", async () => {
