@@ -113,7 +113,15 @@ const isDryRun = (): boolean => {
 };
 
 const getGitHubToken = (): string | undefined => {
-  return Bun.env.GITHUB_TOKEN?.trim();
+  const envToken = Bun.env.GITHUB_TOKEN?.trim();
+  if (envToken) {
+    return envToken;
+  }
+  const result = Bun.spawnSync(["gh", "auth", "token"]);
+  if (result.exitCode === 0) {
+    return result.stdout.toString().trim();
+  }
+  return undefined;
 };
 
 const submitPRForResult = async (
@@ -322,6 +330,10 @@ export async function runOrchestrator(
   if (options.stats) {
     const showStats = deps.showHistoryStats ?? showHistoryStats;
     await showStats(".gittributor/history.json");
+  }
+  if (!getGitHubToken() && !isDryRun()) {
+    warn("GITHUB_TOKEN not set and not in dry-run mode. Set GITHUB_TOKEN or GITTRIBUTOR_DRY_RUN=true.");
+    return 1;
   }
   const config = await (deps.loadConfig ?? loadConfig)();
   const languages = getTargetLanguages(config, options.language);
