@@ -44,11 +44,8 @@ export async function callAnthropic(options: {
   };
 
   if (options.oauthToken && isOAuthToken(options.oauthToken)) {
-    headers["anthropic-version"] = "2024-01-01";
     headers["x-api-key"] = options.oauthToken;
-    headers["anthropic-beta"] = headers["anthropic-beta"]
-      ? `${headers["anthropic-beta"]}, oauth-2025-04-20`
-      : "oauth-2025-04-20";
+    headers["anthropic-beta"] = "oauth-2025-04-20";
   } else if (options.oauthToken) {
     headers["x-api-key"] = options.oauthToken;
   } else if (options.apiKey) {
@@ -99,11 +96,13 @@ export async function callAnthropic(options: {
 }
 
 function extractJson(text: string): string {
+  // Strip markdown code fences: ```json ... ``` or ``` ... ```
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) {
     return fenceMatch[1].trim();
   }
 
+  // Find first { ... } block in the text
   const braceStart = text.indexOf("{");
   const braceEnd = text.lastIndexOf("}");
   if (braceStart !== -1 && braceEnd > braceStart) {
