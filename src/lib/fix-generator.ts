@@ -69,7 +69,13 @@ function extractJson(text: string): string {
 }
 
 function parseFixPayload(responseText: string): ParsedFixPayload {
-  const parsed = JSON.parse(extractJson(responseText)) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJson(responseText)) as unknown;
+  } catch (e) {
+    console.error("Failed to parse LLM fix response:", e);
+    throw new FixValidationError("Failed to parse fix response: response is not valid JSON.");
+  }
   if (!isRecord(parsed)) {
     throw new FixValidationError("Failed to parse fix response: response must be a JSON object.");
   }
@@ -288,7 +294,9 @@ export async function generateFix(
     throw new FixValidationError("Failed to parse fix response: response is not valid JSON.");
   }
 
-  const changes = parseFixChanges(parsedPayload.changes);
+  const changes = parseFixChanges(parsedPayload.changes).filter(
+    (c) => c.modified !== undefined && c.modified !== "",
+  );
   validateFixScope(changes, analysis.relevantFiles);
 
   const fixResult: FixResult = {
