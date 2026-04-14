@@ -145,7 +145,7 @@ const submitPRForResult = async (
   );
 
   if (fileCount > 5 || totalLinesChanged > 200) {
-    process.stdout.write(`[SKIP] Fix too large for automated PR (${fileCount} files, ${totalLinesChanged} LOC). Skipping submission.\n`);
+    warn(`Skipping ${repoFullName}: fix too large for automated PR (${fileCount} files, ${totalLinesChanged} LOC).`);
     return false;
   }
 
