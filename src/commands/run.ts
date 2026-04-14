@@ -502,7 +502,7 @@ export async function runOrchestrator(
       }
 
       printStage("👀", "Reviewing contributions...");
-      await review({ autoApprove: options.dryRun });
+      await review({ autoApprove: true });
 
       printStage("📤", "Submitting contribution...");
       const submitResult = await submit();
