@@ -1,0 +1,42 @@
+# Task 1: GITHUB_TOKEN Resolution with gh auth token Fallback
+
+## Status: COMPLETE
+
+## Changes Made
+- Modified: `src/commands/run.ts`
+- Function `getGitHubToken()` now first tries `Bun.env.GITHUB_TOKEN?.trim()`
+- If env var empty/undefined, calls `Bun.spawnSync(["gh", "auth", "token"])` and checks `exitCode === 0`
+- Returns token string from stdout (trimmed) or `undefined` if both fail
+- Added upfront token validation at start of `runOrchestrator()` function
+- If no token AND not dry-run, logs error via `warn()` and exits early with return code 1
+
+## Verification
+- TypeScript compilation: PASSED (`bunx tsc --noEmit`)
+- Code scan (codesure): 0 findings (no security issues)
+- No new files created
+- Only `src/commands/run.ts` modified
+
+## Diff
+```diff
+ const getGitHubToken = (): string | undefined => {
+-  return Bun.env.GITHUB_TOKEN?.trim();
++  const envToken = Bun.env.GITHUB_TOKEN?.trim();
++  if (envToken) {
++    return envToken;
++  }
++  const result = Bun.spawnSync(["gh", "auth", "token"]);
++  if (result.exitCode === 0) {
++    return result.stdout.toString().trim();
++  }
++  return undefined;
+ };
+
+ // In runOrchestrator():
++  if (!getGitHubToken() && !isDryRun()) {
++    warn("GITHUB_TOKEN not set and not in dry-run mode. Set GITHUB_TOKEN or GITTRIBUTOR_DRY_RUN=true.");
++    return 1;
++  }
+```
+
+## Commit
+- Message: `fix(run): add gh auth token fallback for GITHUB_TOKEN resolution`

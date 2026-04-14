@@ -1,0 +1,12 @@
+# Task 4 QA: relevantFiles null safety
+
+## relevantFiles null safety
+grep -n "relevantFiles" /Users/jnnj92/gittributor/src/lib/anthropic.ts
+Lines 163-164:
+  const relevantFiles = Array.isArray(parsed.relevantFiles)
+    ? parsed.relevantFiles.filter((file): file is string => typeof file === "string")
+
+## Result: PASS
+- Array.isArray check before using
+- TypeScript type guard filter (typeof file === "string")
+- Null safety present

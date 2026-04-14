@@ -1,0 +1,7 @@
+# Task 2 QA: No stdin reads in automated path
+
+## Command
+grep -n "readline\|process.stdin\|stdin.resume\|question(" /Users/jnnj92/gittributor/src/commands/run.ts
+
+## Result: PASS
+No matches found - no stdin blocking in automated pipeline

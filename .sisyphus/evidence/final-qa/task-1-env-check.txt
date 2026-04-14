@@ -1,0 +1,7 @@
+# Task 1 QA: getGitHubToken reads env var first
+
+## Command
+grep -n "GITHUB_TOKEN\|getGitHubToken" /Users/jnnj92/gittributor/src/commands/run.ts | head -20
+
+## Result: PASS
+Lines 115-116: getGitHubToken function defined, checks Bun.env.GITHUB_TOKEN?.trim() first

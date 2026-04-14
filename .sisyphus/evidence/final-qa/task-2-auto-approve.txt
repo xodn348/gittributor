@@ -1,0 +1,7 @@
+# Task 2 QA: review called with autoApprove: true
+
+## Command
+grep -n "autoApprove" /Users/jnnj92/gittributor/src/commands/run.ts
+
+## Result: PASS
+Lines 444 and 505: review({ autoApprove: true })

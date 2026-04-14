@@ -1,0 +1,9 @@
+# Task 3 QA: PR size guard logs via warn()
+
+## Command
+grep -n "warn\|Skipping\|fix too large\|PR submission failed" /Users/jnnj92/gittributor/src/commands/run.ts
+
+## Result: PASS
+- Line 136: warn("GITHUB_TOKEN not set. Skipping PR submission.");
+- Line 148: warn(`Skipping ${repoFullName}: fix too large for automated PR (${fileCount} files, ${totalLinesChanged} LOC).`);
+- Line 218: warn(`PR submission failed for ${repoFullName}: ${msg}`);

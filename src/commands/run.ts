@@ -117,9 +117,14 @@ const getGitHubToken = (): string | undefined => {
   if (envToken) {
     return envToken;
   }
-  const result = Bun.spawnSync(["gh", "auth", "token"]);
-  if (result.exitCode === 0) {
-    return result.stdout.toString().trim();
+  try {
+    const result = Bun.spawnSync(["gh", "auth", "token"]);
+    if (result.exitCode === 0) {
+      const token = result.stdout.toString().trim();
+      if (token) return token;
+    }
+  } catch {
+    // gh not installed or spawn failed — fall through to undefined
   }
   return undefined;
 };

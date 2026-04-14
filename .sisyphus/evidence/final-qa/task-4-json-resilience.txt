@@ -1,0 +1,16 @@
+# Task 4 QA: Code fence stripping and JSON resilience
+
+## Code Fence Stripping
+grep -n "replace\|fence\|strip\|"'"'"'"`"'"'"'""'"'"'"'"'"'"' /Users/jnnj92/gittributor/src/lib/fix-generator.ts
+Line 67: const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+
+## JSON Resilience (try/catch)
+grep -n "try\|catch\|JSON.parse" /Users/jnnj92/gittributor/src/lib/fix-generator.ts
+Lines 73-75:
+  try {
+    parsed = JSON.parse(extractJson(responseText)) as unknown;
+  } catch (e) {
+
+## Result: PASS
+- Code fence stripping regex present
+- JSON.parse wrapped in try/catch
