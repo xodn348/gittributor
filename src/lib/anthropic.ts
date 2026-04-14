@@ -4,7 +4,7 @@ import { AnthropicAPIError, RateLimitError } from "./errors";
 export { AnthropicAPIError, RateLimitError };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL = "claude-opus-4-0";
+const ANTHROPIC_MODEL = "claude-opus-4-5";
 const ANTHROPIC_API_VERSION = "2023-06-01";
 
 function clampConfidence(confidence: unknown): number {
@@ -44,8 +44,8 @@ export async function callAnthropic(options: {
   };
 
   if (options.oauthToken && isOAuthToken(options.oauthToken)) {
-    headers["anthropic-version"] = "2024-01-01";
-    headers["Authorization"] = `Bearer ${options.oauthToken}`;
+    headers["x-api-key"] = options.oauthToken;
+    headers["anthropic-beta"] = "oauth-2025-04-20";
   } else if (options.oauthToken) {
     headers["x-api-key"] = options.oauthToken;
   } else if (options.apiKey) {
