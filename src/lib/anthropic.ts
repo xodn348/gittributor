@@ -3,8 +3,9 @@ import { AnthropicAPIError, RateLimitError } from "./errors";
 
 export { AnthropicAPIError, RateLimitError };
 
-const CLAUDE_CLI_PATH =
-  "/Users/jnnj92/Library/Application Support/Claude/claude-code/2.1.78/claude.app/Contents/MacOS/claude";
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_MODEL = "claude-opus-4-5";
+const ANTHROPIC_API_VERSION = "2023-06-01";
 
 function clampConfidence(confidence: unknown): number {
   if (typeof confidence !== "number" || Number.isNaN(confidence)) {
@@ -26,18 +27,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function buildCliPrompt(system: string, prompt: string): string {
-  return `[SYSTEM]\n${system}\n\n[USER]\n${prompt}`;
-}
-
-async function readSubprocessPipe(pipe: Bun.Subprocess["stdout"] | Bun.Subprocess["stderr"]): Promise<string> {
-  if (!pipe || typeof pipe === "number") {
-    return "";
-  }
-
-  return new Response(pipe).text();
-}
-
 export async function callAnthropic(options: {
   apiKey?: string;
   oauthToken?: string;
@@ -45,59 +34,59 @@ export async function callAnthropic(options: {
   prompt: string;
   maxTokens: number;
 }): Promise<string> {
-  void options.apiKey;
-  void options.oauthToken;
-  void options.maxTokens;
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "anthropic-version": ANTHROPIC_API_VERSION,
+  };
 
-  const fullPrompt = buildCliPrompt(options.system, options.prompt);
-  let proc: Bun.Subprocess;
+  if (options.oauthToken) {
+    // Claude.ai session key (OAuth token for Max subscribers)
+    headers["authorization"] = `Bearer ${options.oauthToken}`;
+  } else if (options.apiKey) {
+    headers["x-api-key"] = options.apiKey;
+  } else {
+    throw new AnthropicAPIError("No API key or OAuth token provided.");
+  }
+
+  const body = JSON.stringify({
+    model: ANTHROPIC_MODEL,
+    max_tokens: options.maxTokens,
+    system: options.system,
+    messages: [{ role: "user", content: options.prompt }],
+  });
+
+  let response: Response;
   try {
-    proc = Bun.spawn({
-      cmd: [
-        CLAUDE_CLI_PATH,
-        "-p",
-        fullPrompt,
-        "--dangerously-skip-permissions",
-      ],
-      stdout: "pipe",
-      stderr: "pipe",
+    response = await fetch(ANTHROPIC_API_URL, {
+      method: "POST",
+      headers,
+      body,
     });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "Unknown spawn failure";
-    throw new AnthropicAPIError(`Failed to start Claude CLI: ${detail}`);
+    const detail = error instanceof Error ? error.message : "Unknown network failure";
+    throw new AnthropicAPIError(`Anthropic API request failed: ${detail}`);
   }
 
-  let stdout = "";
-  let stderr = "";
-  let exitCode = 0;
-  try {
-    const [nextStdout, nextStderr, nextExitCode] = await Promise.all([
-      readSubprocessPipe(proc.stdout),
-      readSubprocessPipe(proc.stderr),
-      proc.exited,
-    ]);
-    stdout = nextStdout;
-    stderr = nextStderr;
-    exitCode = nextExitCode;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "Unknown subprocess failure";
-    throw new AnthropicAPIError(`Claude CLI subprocess failed: ${detail}`);
+  if (response.status === 429) {
+    throw new RateLimitError("Anthropic API rate limit exceeded.");
   }
 
-  if (exitCode !== 0) {
-    const detail = stderr.trim();
-    const message = detail
-      ? `Claude CLI exited with status ${exitCode}: ${detail}`
-      : `Claude CLI exited with status ${exitCode}.`;
-    throw new AnthropicAPIError(message, exitCode);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "(no body)");
+    throw new AnthropicAPIError(`Anthropic API error ${response.status}: ${detail}`, response.status);
   }
 
-  const text = stdout.trim();
-  if (text.length === 0) {
-    throw new AnthropicAPIError("Claude CLI returned empty output.");
+  const json = await response.json() as unknown;
+  if (!isRecord(json) || !Array.isArray(json.content) || json.content.length === 0) {
+    throw new AnthropicAPIError("Anthropic API returned unexpected response shape.");
   }
 
-  return text;
+  const first = json.content[0];
+  if (!isRecord(first) || typeof first.text !== "string") {
+    throw new AnthropicAPIError("Anthropic API response missing text content.");
+  }
+
+  return first.text.trim();
 }
 
 function extractJson(text: string): string {

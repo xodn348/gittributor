@@ -74,3 +74,11 @@
 - Message: `feat(run): log repo name when PR size guard triggers`
 - Files changed: src/commands/run.ts (1 line)
 
+
+## F4 Re-review (2026-04-13)
+- Verified getGitHubToken wraps Bun.spawnSync(["gh", "auth", "token"]) in try/catch and falls through to undefined on spawn failure.
+- Verified automated review calls use review({ autoApprove: true }) in both run paths.
+- Verified no-token early exit and PR size guard both use warn(...), not process.stdout.write(...).
+- Verified fix-generator.ts strips fenced JSON, catches parse failures, and filters empty modified payload entries before scope validation.
+- Verified anthropic.ts already had Array.isArray(parsed.relevantFiles) null safety; this was pre-existing, not a remaining gap.
+- Verified bun run typecheck completed successfully during re-review.
