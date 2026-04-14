@@ -266,10 +266,15 @@ export async function generateFix(
 
   let responseText: string;
   try {
+    const aiProvider: "openai" | "anthropic" = Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim() === "openai" ? "openai" : "anthropic";
     responseText = await callModel({
-      provider: Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim() === "openai" ? "openai" : "anthropic",
-      apiKey: Bun.env.OPENAI_API_KEY?.trim() ?? Bun.env.ANTHROPIC_API_KEY?.trim(),
-      oauthToken: Bun.env.OPENAI_OAUTH_TOKEN?.trim() ?? Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
+      provider: aiProvider,
+      apiKey: aiProvider === "openai"
+        ? Bun.env.OPENAI_API_KEY?.trim() || undefined
+        : Bun.env.ANTHROPIC_API_KEY?.trim() || undefined,
+      oauthToken: aiProvider === "openai"
+        ? Bun.env.OPENAI_OAUTH_TOKEN?.trim() || undefined
+        : Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || undefined,
       model: Bun.env.OPENAI_MODEL?.trim(),
       system,
       prompt,

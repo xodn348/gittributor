@@ -389,10 +389,15 @@ async function requestAnalysis(
     ? ANALYZER_SYSTEM_PROMPT
     : "You are discovering bugs, security issues, type errors, and logic errors in a codebase. Identify actionable issues and suggest which files need changes.";
   const prompt = buildAnalysisPrompt(repo, issue, repoPath, selectedFiles);
+  const aiProvider: "openai" | "anthropic" = Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim() === "openai" ? "openai" : "anthropic";
   const responseText = await callModel({
-    provider: Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim() === "openai" ? "openai" : "anthropic",
-    apiKey: Bun.env.OPENAI_API_KEY?.trim() ?? Bun.env.ANTHROPIC_API_KEY?.trim(),
-    oauthToken: Bun.env.OPENAI_OAUTH_TOKEN?.trim() ?? Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim(),
+    provider: aiProvider,
+    apiKey: aiProvider === "openai"
+      ? Bun.env.OPENAI_API_KEY?.trim() || undefined
+      : Bun.env.ANTHROPIC_API_KEY?.trim() || undefined,
+    oauthToken: aiProvider === "openai"
+      ? Bun.env.OPENAI_OAUTH_TOKEN?.trim() || undefined
+      : Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || undefined,
     model: Bun.env.OPENAI_MODEL?.trim(),
     system: systemPrompt,
     prompt,
