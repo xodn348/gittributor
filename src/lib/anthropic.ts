@@ -4,7 +4,7 @@ import { AnthropicAPIError, RateLimitError } from "./errors";
 export { AnthropicAPIError, RateLimitError };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL = "claude-opus-4-5";
+const ANTHROPIC_MODEL = "claude-opus-4-0";
 const ANTHROPIC_API_VERSION = "2023-06-01";
 
 function clampConfidence(confidence: unknown): number {
@@ -23,6 +23,10 @@ function clampConfidence(confidence: unknown): number {
   return confidence;
 }
 
+function isOAuthToken(token: string): boolean {
+  return token.startsWith("sk-ant-oat");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -39,9 +43,11 @@ export async function callAnthropic(options: {
     "anthropic-version": ANTHROPIC_API_VERSION,
   };
 
-  if (options.oauthToken) {
-    // Claude.ai session key (OAuth token for Max subscribers)
-    headers["authorization"] = `Bearer ${options.oauthToken}`;
+  if (options.oauthToken && isOAuthToken(options.oauthToken)) {
+    headers["anthropic-version"] = "2024-01-01";
+    headers["Authorization"] = `Bearer ${options.oauthToken}`;
+  } else if (options.oauthToken) {
+    headers["x-api-key"] = options.oauthToken;
   } else if (options.apiKey) {
     headers["x-api-key"] = options.apiKey;
   } else {
