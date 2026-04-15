@@ -325,6 +325,7 @@ const resolveRuntimeConfig = async (globalFlags: GlobalFlags): Promise<Config> =
   }
   if (runtimeConfig.oauthToken) {
     process.env.CLAUDE_CODE_OAUTH_TOKEN = runtimeConfig.oauthToken;
+    Bun.env.CLAUDE_CODE_OAUTH_TOKEN = runtimeConfig.oauthToken;
   }
 
   return runtimeConfig;
