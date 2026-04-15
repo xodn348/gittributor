@@ -200,7 +200,7 @@ export class ConfigError extends Error {
 
 export const loadConfig = async (): Promise<Config> => {
   const aiProvider = Bun.env.GITTRIBUTOR_AI_PROVIDER?.trim();
-  const oauthToken = Bun.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  const oauthToken = (Bun.env.CLAUDE_CODE_OAUTH_TOKEN || Bun.env.CLAUDE_SESSION_KEY)?.trim();
   const anthropicApiKey = Bun.env.ANTHROPIC_API_KEY?.trim();
   const openaiApiKey = Bun.env.OPENAI_API_KEY?.trim();
   const openaiOauthToken = Bun.env.OPENAI_OAUTH_TOKEN?.trim();

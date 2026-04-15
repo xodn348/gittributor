@@ -321,8 +321,9 @@ const resolveRuntimeConfig = async (globalFlags: GlobalFlags): Promise<Config> =
     process.env.OPENAI_OAUTH_TOKEN = runtimeConfig.openaiOauthToken;
   }
   if (runtimeConfig.anthropicApiKey) {
-    process.env.ANTHROPIC_API_KEY = runtimeConfig.anthropicApiKey;
-  }
+      process.env.ANTHROPIC_API_KEY = runtimeConfig.anthropicApiKey;
+      Bun.env.ANTHROPIC_API_KEY = runtimeConfig.anthropicApiKey;
+    }
   if (runtimeConfig.oauthToken) {
     process.env.CLAUDE_CODE_OAUTH_TOKEN = runtimeConfig.oauthToken;
     Bun.env.CLAUDE_CODE_OAUTH_TOKEN = runtimeConfig.oauthToken;
