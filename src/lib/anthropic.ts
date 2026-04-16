@@ -77,6 +77,14 @@ export async function callAnthropic(options: {
     throw new RateLimitError("Anthropic API rate limit exceeded.");
   }
 
+  if (response.status === 401 || response.status === 403) {
+    const detail = await response.text().catch(() => "(no body)");
+    throw new AnthropicAPIError(
+      `Authentication failed (HTTP ${response.status}): Invalid or expired API key or OAuth token. Check your ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN environment variable. Detail: ${detail}`,
+      response.status
+    );
+  }
+
   if (!response.ok) {
     const detail = await response.text().catch(() => "(no body)");
     throw new AnthropicAPIError(`Anthropic API error ${response.status}: ${detail}`, response.status);

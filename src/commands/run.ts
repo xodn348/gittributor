@@ -428,7 +428,7 @@ export async function runOrchestrator(
           if (err instanceof Error && err.message.includes("timeout")) {
             warn(`Skipping ${tr.fullName}: analysis timed out after 60s`);
           } else {
-            logError(`Error analyzing ${tr.fullName}: ${err instanceof Error ? err.message : String(err)}`);
+            process.stderr.write(`Error analyzing ${tr.fullName}: ${err instanceof Error ? err.message : String(err)}\n`);
             debug(`[run] Skipping ${tr.fullName} due to analysis error`);
           }
           continue;
